@@ -1324,6 +1324,35 @@ html, body {
         </button>
       </div>
 
+      <!-- FLOOD INUNDATION TILE ───────────────────────────────────── -->
+      <div class="tile glass" id="tile-flood" data-card-id="flood" data-tray-index="11">
+        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
+        <div class="tile-header">
+          <span class="tile-title">FLOOD SIM</span>
+          <span class="tile-badge closed" id="flood-tile-badge">OFF</span>
+        </div>
+        <div class="tile-value" id="flood-tile-area" style="color:var(--dim2)">—</div>
+        <div class="tile-subtitle" id="flood-status">Inundation simulation</div>
+        <button id="flood-tile-toggle" class="flight-search-btn" style="margin-top:8px;width:100%;justify-content:center;gap:0">
+          ENABLE
+        </button>
+        <div id="flood-controls" style="display:none;margin-top:4px">
+          <div class="viewshed-slider-row" style="margin-top:8px">
+            <span>Water level rise</span><span class="viewshed-slider-val" id="flood-level-val">2.0m</span>
+          </div>
+          <input id="flood-level-slider" class="viewshed-slider" type="range" min="0" max="10" step="0.5" value="2">
+          <div class="viewshed-slider-row">
+            <span>Radius</span><span class="viewshed-slider-val" id="flood-radius-val">5.0km</span>
+          </div>
+          <input id="flood-radius-slider" class="viewshed-slider" type="range" min="1" max="10" step="0.5" value="5">
+          <div class="viewshed-slider-row">
+            <span>Overlay opacity</span><span class="viewshed-slider-val" id="flood-opacity-val">85%</span>
+          </div>
+          <input id="flood-opacity-slider" class="viewshed-slider" type="range" min="10" max="100" step="5" value="85">
+          <button class="viewshed-clear-btn" id="flood-clear-btn" style="margin-top:8px;width:100%">CLEAR</button>
+        </div>
+      </div>
+
       <!-- VIEWSHED ANALYSIS TILE ──────────────────────────────────── -->
       <div class="tile glass" id="tile-viewshed" data-card-id="viewshed" data-tray-index="10">
         <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
@@ -2791,6 +2820,7 @@ function _performBasemapSwap(next) {
       try { _enhanceBasemap(); } catch (e) { console.warn('basemap enhance failed:', e); }
       try { _applyAllOverlays(); } catch (e) { console.warn('overlays re-apply failed:', e); }
       try { _readdViewshed(); } catch (e) { console.warn('viewshed re-add failed:', e); }
+      try { _readdFlood();    } catch (e) { console.warn('flood re-add failed:', e); }
     }, 0);
   };
   const onStyledata = () => { if (map.isStyleLoaded()) performReadd(); };
@@ -2950,6 +2980,33 @@ function wireMapSettingsPanel() {
   document.getElementById('viewshed-clear-btn')?.addEventListener('click', () => {
     clearViewshed();
     _setViewshedStatus('', 'Click map to place observer');
+  });
+
+  // Flood sim tile controls
+  document.getElementById('flood-tile-toggle')?.addEventListener('click', () => {
+    toggleFlood(!_floodActive);
+    if (_floodActive) _setFloodStatus('', 'Click map to place flood origin');
+  });
+  document.getElementById('flood-level-slider')?.addEventListener('input', (e) => {
+    _floodWaterLevel = parseFloat(e.target.value);
+    document.getElementById('flood-level-val').textContent = `${Number(e.target.value).toFixed(1)}m`;
+    if (_floodGrid) _renderFlood();  // instant re-render on cached grid — no API call
+  });
+  document.getElementById('flood-radius-slider')?.addEventListener('input', (e) => {
+    _floodRadius = parseFloat(e.target.value);
+    document.getElementById('flood-radius-val').textContent = `${Number(e.target.value).toFixed(1)}km`;
+    // Radius change takes effect on next click (requires a new elevation fetch)
+    if (_floodGrid) _setFloodStatus('', 'Click map to re-fetch at new radius');
+  });
+  document.getElementById('flood-opacity-slider')?.addEventListener('input', (e) => {
+    _floodOpacity = parseInt(e.target.value) / 100;
+    document.getElementById('flood-opacity-val').textContent = `${e.target.value}%`;
+    if (map && map.getLayer(FLOOD_LAYER))
+      map.setPaintProperty(FLOOD_LAYER, 'raster-opacity', _floodOpacity);
+  });
+  document.getElementById('flood-clear-btn')?.addEventListener('click', () => {
+    clearFlood();
+    _setFloodStatus('', 'Click map to place flood origin');
   });
 }
 // (Satellite now uses MapTiler's own satellite style for provider consistency —
@@ -3818,6 +3875,7 @@ let _viewshedBounds    = null;  // { minLng, maxLng, minLat, maxLat }
 
 function toggleViewshed(on) {
   _viewshedActive = !!on;
+  if (_viewshedActive && _floodActive) toggleFlood(false);
   const badge     = document.getElementById('viewshed-tile-badge');
   const toggleBtn = document.getElementById('viewshed-tile-toggle');
   const controls  = document.getElementById('viewshed-controls');
@@ -4021,9 +4079,226 @@ async function runViewshed(lat, lng) {
 
   } catch (err) {
     console.error('viewshed error:', err);
-    _setViewshedStatus('error', `Error: ${err.message}`);
+    _setViewshedStatus('error', `Error: ${err?.message || String(err)}`);
   } finally {
     if (map) map.getCanvas().style.cursor = _viewshedActive ? 'crosshair' : '';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FLOOD INUNDATION SIMULATOR
+// ═══════════════════════════════════════════════════════════════
+// User clicks the map → reuses /proxy/elevation-grid to fetch DEM →
+// BFS flood-fill from the clicked cell (any 4-connected cell at or below
+// waterSurface = seedElev + rise gets flooded) → blue depth-shaded overlay.
+// Water-level slider re-runs the fill on the cached grid instantly (no
+// second API call needed). Mutual exclusion with the viewshed tool.
+
+const FLOOD_SOURCE = 'src-flood';
+const FLOOD_LAYER  = 'layer-flood';
+
+let _floodActive     = false;
+let _floodWaterLevel = 2.0;   // metres rise above seed cell elevation
+let _floodRadius     = 5.0;   // km — controls terrain fetch area
+let _floodOpacity    = 0.85;
+let _floodGrid       = null;  // Int16Array, row-major, row 0 = north
+let _floodW          = 0;
+let _floodH          = 0;
+let _floodSeedRow    = 0;
+let _floodSeedCol    = 0;
+let _floodBounds     = null;  // { minLng, maxLng, minLat, maxLat }
+let _floodDataUrl    = null;
+
+function toggleFlood(on) {
+  _floodActive = !!on;
+  if (_floodActive && _viewshedActive) toggleViewshed(false);
+  const badge     = document.getElementById('flood-tile-badge');
+  const toggleBtn = document.getElementById('flood-tile-toggle');
+  const controls  = document.getElementById('flood-controls');
+  if (badge) {
+    badge.className   = 'tile-badge ' + (_floodActive ? 'live' : 'closed');
+    badge.textContent = _floodActive ? 'ON' : 'OFF';
+  }
+  if (toggleBtn) toggleBtn.textContent = _floodActive ? 'DISABLE' : 'ENABLE';
+  if (controls)  controls.style.display = _floodActive ? 'block' : 'none';
+  if (map)       map.getCanvas().style.cursor = _floodActive ? 'crosshair' : '';
+  if (!_floodActive) clearFlood();
+}
+
+function clearFlood() {
+  if (!map) return;
+  if (map.getLayer(FLOOD_LAYER))   map.removeLayer(FLOOD_LAYER);
+  if (map.getSource(FLOOD_SOURCE)) map.removeSource(FLOOD_SOURCE);
+  _floodDataUrl = null;
+  _floodGrid    = null;
+  const areaEl = document.getElementById('flood-tile-area');
+  if (areaEl) { areaEl.textContent = '\u2014'; areaEl.style.color = 'var(--dim2)'; }
+}
+
+function _readdFlood() {
+  if (!_floodDataUrl || !_floodBounds) return;
+  const b = _floodBounds;
+  try {
+    map.addSource(FLOOD_SOURCE, {
+      type: 'image',
+      url: _floodDataUrl,
+      coordinates: [
+        [b.minLng, b.maxLat],
+        [b.maxLng, b.maxLat],
+        [b.maxLng, b.minLat],
+        [b.minLng, b.minLat],
+      ],
+    });
+    map.addLayer({
+      id: FLOOD_LAYER, type: 'raster',
+      source: FLOOD_SOURCE, paint: { 'raster-opacity': _floodOpacity },
+    });
+  } catch (e) { console.warn('flood re-add failed:', e); }
+}
+
+// BFS flood fill. Returns { visited: Uint8Array, depth: Float32Array }.
+// waterLevel = metres rise above the seed cell's own elevation.
+// Only cells reachable through continuously-connected flooded cells are marked.
+function _computeFlood(grid, w, h, seedRow, seedCol, waterLevel) {
+  const visited = new Uint8Array(w * h);
+  const depth   = new Float32Array(w * h);
+  const seedIdx = seedRow * w + seedCol;
+  const waterSurface = grid[seedIdx] + waterLevel;
+
+  if (grid[seedIdx] > waterSurface) return { visited, depth };
+
+  visited[seedIdx] = 1;
+  depth[seedIdx]   = waterSurface - grid[seedIdx];
+
+  const queue = [seedIdx];
+  let head = 0;
+  while (head < queue.length) {
+    const idx = queue[head++];
+    const r = Math.floor(idx / w);
+    const c = idx % w;
+    // 4-connected neighbours — avoids diagonal leaks through ridges
+    if (r > 0)     { const n = idx - w; if (!visited[n] && grid[n] <= waterSurface) { visited[n] = 1; depth[n] = waterSurface - grid[n]; queue.push(n); } }
+    if (r < h - 1) { const n = idx + w; if (!visited[n] && grid[n] <= waterSurface) { visited[n] = 1; depth[n] = waterSurface - grid[n]; queue.push(n); } }
+    if (c > 0)     { const n = idx - 1; if (!visited[n] && grid[n] <= waterSurface) { visited[n] = 1; depth[n] = waterSurface - grid[n]; queue.push(n); } }
+    if (c < w - 1) { const n = idx + 1; if (!visited[n] && grid[n] <= waterSurface) { visited[n] = 1; depth[n] = waterSurface - grid[n]; queue.push(n); } }
+  }
+  return { visited, depth };
+}
+
+function _setFloodStatus(state, msg) {
+  const el = document.getElementById('flood-status');
+  if (!el) return;
+  el.className = 'viewshed-status' + (state ? ' ' + state : '');
+  el.textContent = msg;
+}
+
+// Re-renders the flood overlay on the already-fetched grid — no API call.
+// Called immediately when the water-level slider moves.
+function _renderFlood() {
+  if (!_floodGrid || !_floodBounds) return;
+  const w = _floodW, h = _floodH;
+
+  const { visited, depth } = _computeFlood(_floodGrid, w, h, _floodSeedRow, _floodSeedCol, _floodWaterLevel);
+
+  const canvas  = document.createElement('canvas');
+  canvas.width  = w; canvas.height = h;
+  const ctx     = canvas.getContext('2d');
+  const imgData = ctx.createImageData(w, h);
+
+  let floodCount = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (!visited[i]) continue;
+    floodCount++;
+    const d = depth[i];
+    const p = i * 4;
+    // Depth ramp: < 0.5 m → pale sky, 0.5–1.5 m → sky-400, 1.5–3 m → sky-600, 3 m+ → navy
+    if (d < 0.5)       { imgData.data[p]=186; imgData.data[p+1]=230; imgData.data[p+2]=253; imgData.data[p+3]=150; }
+    else if (d < 1.5)  { imgData.data[p]=56;  imgData.data[p+1]=189; imgData.data[p+2]=248; imgData.data[p+3]=185; }
+    else if (d < 3.0)  { imgData.data[p]=2;   imgData.data[p+1]=132; imgData.data[p+2]=199; imgData.data[p+3]=205; }
+    else               { imgData.data[p]=7;   imgData.data[p+1]=89;  imgData.data[p+2]=133; imgData.data[p+3]=220; }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // Soft circular mask — dissolves bbox edge into the map
+  const oR = _floodSeedRow, oC = _floodSeedCol;
+  const maskR = Math.min(oR, h - 1 - oR, oC, w - 1 - oC) * 0.96;
+  const grad  = ctx.createRadialGradient(oC, oR, maskR * 0.78, oC, oR, maskR * 1.08);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,1)');
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'source-over';
+
+  // Origin marker
+  ctx.beginPath(); ctx.arc(oC, oR, 7, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(56,189,248,1)'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.beginPath(); ctx.arc(oC, oR, 3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(14,165,233,1)'; ctx.fill();
+
+  const dataUrl = canvas.toDataURL('image/png');
+
+  // Swap source in-place — remove old, add new
+  if (map.getLayer(FLOOD_LAYER))   map.removeLayer(FLOOD_LAYER);
+  if (map.getSource(FLOOD_SOURCE)) map.removeSource(FLOOD_SOURCE);
+  _floodDataUrl = dataUrl;
+
+  const b = _floodBounds;
+  map.addSource(FLOOD_SOURCE, {
+    type: 'image', url: dataUrl,
+    coordinates: [[b.minLng,b.maxLat],[b.maxLng,b.maxLat],[b.maxLng,b.minLat],[b.minLng,b.minLat]],
+  });
+  map.addLayer({ id: FLOOD_LAYER, type: 'raster', source: FLOOD_SOURCE, paint: { 'raster-opacity': _floodOpacity } });
+
+  // Stats
+  const latSpan   = _floodBounds.maxLat - _floodBounds.minLat;
+  const lngSpan   = _floodBounds.maxLng - _floodBounds.minLng;
+  const midLat    = (_floodBounds.minLat + _floodBounds.maxLat) / 2;
+  const cellLatM  = latSpan * 111000 / h;
+  const cellLngM  = lngSpan * 111000 * Math.cos(midLat * Math.PI / 180) / w;
+  const cellKm2   = (cellLatM * cellLngM) / 1e6;
+  const floodKm2  = (floodCount * cellKm2).toFixed(2);
+  const floodPct  = Math.round(floodCount / (w * h) * 100);
+
+  const areaEl = document.getElementById('flood-tile-area');
+  if (areaEl) { areaEl.textContent = `${floodKm2} km\u00b2`; areaEl.style.color = '#38bdf8'; }
+  _setFloodStatus('done', `${floodPct}% flooded \u00b7 ${floodKm2} km\u00b2`);
+}
+
+async function runFlood(lat, lng) {
+  if (!_floodActive) return;
+  _setFloodStatus('loading', 'Fetching elevation data\u2026');
+  if (map) map.getCanvas().style.cursor = 'wait';
+
+  try {
+    const resp = await _fetch(`${API}/proxy/elevation-grid?lat=${lat}&lng=${lng}&radius_km=${_floodRadius}`);
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${resp.status}`);
+    }
+    const { grid: gridRows, width: w, height: h, bounds } = await resp.json();
+
+    _setFloodStatus('loading', 'Computing flood extent\u2026');
+
+    _floodGrid = new Int16Array(w * h);
+    for (let row = 0; row < h; row++)
+      for (let col = 0; col < w; col++)
+        _floodGrid[row * w + col] = gridRows[row][col];
+
+    _floodW      = w;
+    _floodH      = h;
+    _floodBounds = bounds;
+    _floodSeedCol = Math.max(0, Math.min(w - 1, Math.round((lng - bounds.minLng) / (bounds.maxLng - bounds.minLng) * (w - 1))));
+    _floodSeedRow = Math.max(0, Math.min(h - 1, Math.round((bounds.maxLat - lat) / (bounds.maxLat - bounds.minLat) * (h - 1))));
+
+    _renderFlood();
+
+  } catch (err) {
+    console.error('flood error:', err);
+    _setFloodStatus('error', `Error: ${err?.message || String(err)}`);
+  } finally {
+    if (map) map.getCanvas().style.cursor = _floodActive ? 'crosshair' : '';
   }
 }
 
@@ -4844,8 +5119,8 @@ async function initMap() {
   // Viewshed mode — general click handler; layer-specific handlers check
   // _viewshedActive themselves (see individual layer click handlers).
   map.on('click', (e) => {
-    if (!_viewshedActive) return;
-    runViewshed(e.lngLat.lat, e.lngLat.lng);
+    if      (_viewshedActive) runViewshed(e.lngLat.lat, e.lngLat.lng);
+    else if (_floodActive)    runFlood(e.lngLat.lat, e.lngLat.lng);
   });
 
   // Track mouse position
