@@ -1,0 +1,17 @@
+# Secrets — never commit. Allow the example template through.
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS / editor / local tooling
+.DS_Store
+*.lnk
+.claude/
