@@ -75,12 +75,36 @@ async def lifespan(application: FastAPI):
 app = FastAPI(title="God's Eye Proxy", version="1.0.0", docs_url="/docs",
               lifespan=lifespan)
 
+# Read allowed origins from env so production domains (e.g. PythonAnywhere)
+# can be added without touching code.  Default: localhost only.
+# Set GODS_EYE_ALLOWED_ORIGINS=https://yourapp.pythonanywhere.com,http://localhost:8777
+_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "GODS_EYE_ALLOWED_ORIGINS",
+        "http://localhost:8777,http://127.0.0.1:8777",
+    ).split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_methods=["GET"],
     allow_headers=["*"],
 )
+
+# ═══════════════════════════════════════════════════════════════
+# UPSTREAM DATA SOURCE URLs
+# Central registry — change a URL here rather than hunting through functions.
+# ═══════════════════════════════════════════════════════════════
+
+_URL_OPEN_METEO    = "https://api.open-meteo.com/v1/forecast"
+_URL_RFS_INCIDENTS = "https://www.rfs.nsw.gov.au/feeds/majorIncidents.json"
+_URL_DEA_HOTSPOTS  = "https://hotspots.dea.ga.gov.au/geoserver/public/wfs"
+_URL_VIC_EMERGENCY = "https://data.emergency.vic.gov.au/Show?pageId=getIncidentJSON"
+_URL_NASA_FIRMS    = "https://firms.modaps.eosdis.nasa.gov/api/country/csv/VIIRS_SNPP_NRT/AUS/1"
+_URL_RV_TILECACHE  = "https://tilecache.rainviewer.com"
 
 # ═══════════════════════════════════════════════════════════════
 # CACHE + HTTP CLIENT
@@ -175,6 +199,9 @@ async def serve_dashboard():
         value = os.environ.get(name, "")
         if not value:
             log.warning("Env var %s not set; %s placeholder will be empty.", name, name)
+        # Strip chars that can't appear in a legitimate API key — prevents an
+        # accidentally malformed .env value from breaking the HTML or JS string.
+        value = re.sub(r"[^A-Za-z0-9\-_.]", "", value)
         html = html.replace("{{" + name + "}}", value)
     return HTMLResponse(html)
 
@@ -1047,10 +1074,7 @@ async def proxy_fires():
 
     # Source 1: NSW RFS Major Incidents (well-maintained GeoJSON feed)
     try:
-        r = await http.get(
-            "https://www.rfs.nsw.gov.au/feeds/majorIncidents.json",
-            headers=_HEADERS,
-        )
+        r = await http.get(_URL_RFS_INCIDENTS, headers=_HEADERS)
         r.raise_for_status()
         data = r.json()
         if data.get("features"):
@@ -1062,7 +1086,7 @@ async def proxy_fires():
     # Source 2: NSW RFS all incidents
     try:
         r = await http.get(
-            "https://www.rfs.nsw.gov.au/feeds/majorIncidents.json",
+            _URL_RFS_INCIDENTS,
             headers={**_HEADERS, "Accept": "application/geo+json"},
         )
         if r.status_code == 200:
@@ -1076,11 +1100,11 @@ async def proxy_fires():
     # Source 3: GA Sentinel Hotspots (last 72 hours — bigger window for coverage)
     try:
         r = await http.get(
-            "https://hotspots.dea.ga.gov.au/geoserver/public/wfs"
-            "?service=WFS&version=2.0.0&request=GetFeature"
-            "&typeNames=public:hotspots_last_72hrs"
-            "&outputFormat=application/json"
-            "&count=500",
+            _URL_DEA_HOTSPOTS
+            + "?service=WFS&version=2.0.0&request=GetFeature"
+            + "&typeNames=public:hotspots_last_72hrs"
+            + "&outputFormat=application/json"
+            + "&count=500",
             headers=_HEADERS,
             timeout=20.0,
         )
@@ -1095,7 +1119,7 @@ async def proxy_fires():
     # Source 4: Emergency Victoria (CFA) incidents
     try:
         r = await http.get(
-            "https://data.emergency.vic.gov.au/Show?pageId=getIncidentJSON",
+            _URL_VIC_EMERGENCY,
             headers=_HEADERS,
         )
         r.raise_for_status()
@@ -1123,7 +1147,7 @@ async def proxy_fires():
     # Source 5: NASA FIRMS (no key needed for CSV, but let's try the open GeoJSON)
     try:
         r = await http.get(
-            "https://firms.modaps.eosdis.nasa.gov/api/country/csv/VIIRS_SNPP_NRT/AUS/1",
+            _URL_NASA_FIRMS,
             headers=_HEADERS,
             timeout=20.0,
         )
@@ -2155,6 +2179,13 @@ def _get_om_client() -> httpx.AsyncClient:
         )
     return _om_http_client
 
+def _valid_coord_csv(val: str, lo: float, hi: float) -> bool:
+    try:
+        return all(lo <= float(v.strip()) <= hi for v in val.split(",") if v.strip())
+    except ValueError:
+        return False
+
+
 @app.get("/proxy/openmeteo")
 async def proxy_openmeteo(
     latitude: str,
@@ -2164,6 +2195,9 @@ async def proxy_openmeteo(
 ):
     """Cached batch forecast for the weather panel. Returns last-known
     payload (with stale=true) when Open-Meteo 429s or fails."""
+    if not _valid_coord_csv(latitude, -90, 90) or not _valid_coord_csv(longitude, -180, 180):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="invalid lat/lng values")
     key = f"openmeteo:{latitude}:{longitude}:{current}"
     now = time.time()
     entry = _cache.get(key)
@@ -2171,9 +2205,9 @@ async def proxy_openmeteo(
         return {"data": entry["data"], "stale": False, "cached_at": entry["ts"]}
 
     url = (
-        "https://api.open-meteo.com/v1/forecast"
-        f"?latitude={latitude}&longitude={longitude}"
-        f"&current={current}&timezone={timezone_param}"
+        _URL_OPEN_METEO
+        + f"?latitude={latitude}&longitude={longitude}"
+        + f"&current={current}&timezone={timezone_param}"
     )
     upstream_err = None
     upstream_status = None
@@ -2222,9 +2256,9 @@ async def proxy_openmeteo_detail(latitude: float, longitude: float, force: int =
         return {"data": cached["data"], "stale": False, "cached_at": cached["ts"]}
 
     url = (
-        "https://api.open-meteo.com/v1/forecast"
-        f"?latitude={latitude}&longitude={longitude}"
-        "&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,"
+        _URL_OPEN_METEO
+        + f"?latitude={latitude}&longitude={longitude}"
+        + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,"
         "weather_code,wind_speed_10m,wind_direction_10m,pressure_msl,uv_index,is_day"
         "&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,"
         "weather_code,wind_speed_10m,relative_humidity_2m"
@@ -2888,7 +2922,7 @@ _RV_TILE_HEADERS = {
     "Access-Control-Allow-Origin": "*",
 }
 
-_RV_PATH_RE = re.compile(r"^[a-zA-Z0-9/_]+\.png$")
+_RV_PATH_RE = re.compile(r"^[a-zA-Z0-9]+(/[a-zA-Z0-9]+)*\.png$")
 
 
 @app.get("/proxy/rainviewer/{path:path}")
@@ -2897,7 +2931,7 @@ async def proxy_rainviewer_tile(path: str):
     if not _RV_PATH_RE.match(path):
         return Response(status_code=400,
                         content=b"invalid tile path: only digits, slashes, and .png allowed")
-    url = f"https://tilecache.rainviewer.com/{path}"
+    url = f"{_URL_RV_TILECACHE}/{path}"
     cached = _rv_tile_cache.get(url)
     now = time.time()
     if cached and now - cached["ts"] < 600:

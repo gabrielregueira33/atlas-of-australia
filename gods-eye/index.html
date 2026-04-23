@@ -1092,24 +1092,6 @@ html, body {
       <span>Incidents</span><span class="toggle-state">OFF</span>
     </button>
   </div>
-  <div class="settings-section">
-    <div class="settings-label">ANALYSIS</div>
-    <button class="settings-toggle" id="viewshed-mode-btn">
-      <span>Viewshed / LoS</span><span class="toggle-state" id="viewshed-toggle-state">OFF</span>
-    </button>
-    <div class="viewshed-controls" id="viewshed-controls" style="display:none">
-      <div class="viewshed-slider-row">
-        <span>Observer height</span><span class="viewshed-slider-val" id="viewshed-obs-val">1.7m</span>
-      </div>
-      <input id="viewshed-obs-slider" class="viewshed-slider" type="range" min="1.7" max="50" step="0.5" value="1.7">
-      <div class="viewshed-slider-row">
-        <span>Radius</span><span class="viewshed-slider-val" id="viewshed-radius-val">2.0km</span>
-      </div>
-      <input id="viewshed-radius-slider" class="viewshed-slider" type="range" min="0.5" max="10" step="0.5" value="2">
-      <div class="viewshed-status" id="viewshed-status">Click map to place observer</div>
-      <button class="viewshed-clear-btn" id="viewshed-clear-btn">CLEAR</button>
-    </div>
-  </div>
   <div style="font-size:9px;color:var(--dim2);margin-top:8px;letter-spacing:0.04em;line-height:1.4">Changes save automatically &amp; persist on reload.</div>
 </div>
 
@@ -1341,6 +1323,36 @@ html, body {
           Search flight
         </button>
       </div>
+
+      <!-- VIEWSHED ANALYSIS TILE ──────────────────────────────────── -->
+      <div class="tile glass" id="tile-viewshed" data-card-id="viewshed" data-tray-index="10">
+        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
+        <div class="tile-header">
+          <span class="tile-title">VIEWSHED</span>
+          <span class="tile-badge closed" id="viewshed-tile-badge">OFF</span>
+        </div>
+        <div class="tile-value" id="viewshed-tile-pct" style="color:var(--dim2)">—</div>
+        <div class="tile-subtitle" id="viewshed-status">Line-of-sight analysis</div>
+        <button id="viewshed-tile-toggle" class="flight-search-btn" style="margin-top:8px;width:100%;justify-content:center;gap:0">
+          ENABLE
+        </button>
+        <div id="viewshed-controls" style="display:none;margin-top:4px">
+          <div class="viewshed-slider-row" style="margin-top:8px">
+            <span>Observer height</span><span class="viewshed-slider-val" id="viewshed-obs-val">1.7m</span>
+          </div>
+          <input id="viewshed-obs-slider" class="viewshed-slider" type="range" min="1.7" max="50" step="0.5" value="1.7">
+          <div class="viewshed-slider-row">
+            <span>Radius</span><span class="viewshed-slider-val" id="viewshed-radius-val">2.0km</span>
+          </div>
+          <input id="viewshed-radius-slider" class="viewshed-slider" type="range" min="0.5" max="10" step="0.5" value="2">
+          <div class="viewshed-slider-row">
+            <span>Overlay opacity</span><span class="viewshed-slider-val" id="viewshed-opacity-val">90%</span>
+          </div>
+          <input id="viewshed-opacity-slider" class="viewshed-slider" type="range" min="10" max="100" step="5" value="90">
+          <button class="viewshed-clear-btn" id="viewshed-clear-btn" style="margin-top:8px;width:100%">CLEAR</button>
+        </div>
+      </div>
+
     </div><!-- /.card-tray-grid -->
     <div class="card-tray-empty">All cards are pinned to the map. Drag one back here, or click "All to tray" above.</div>
   </div><!-- /.card-tray-scroll -->
@@ -1465,6 +1477,13 @@ html, body {
 
 // Proxy base URL — auto-detect (same origin when served by gods-eye-server.py)
 const API = window.location.origin;
+
+// Drop-in fetch wrapper: adds a 15 s timeout to any call that doesn't already
+// supply its own AbortSignal, preventing silent hangs on slow proxy responses.
+function _fetch(url, opts = {}) {
+  if (!opts.signal) opts = { ...opts, signal: AbortSignal.timeout(15_000) };
+  return fetch(url, opts);
+}
 
 const AUSTRALIA_CENTER = [134.0, -25.5];
 const AUSTRALIA_BOUNDS = [[110, -45], [155, -10]];
@@ -1872,7 +1891,7 @@ let _sourceCount = 0;
 
 async function checkProxy() {
   try {
-    const r = await fetch(`${API}/proxy/status`, { signal: AbortSignal.timeout(3000) });
+    const r = await _fetch(`${API}/proxy/status`, { signal: AbortSignal.timeout(3000) });
     _proxyAvailable = r.ok;
   } catch { _proxyAvailable = false; }
   console.log('Proxy available:', _proxyAvailable);
@@ -1887,7 +1906,7 @@ async function fetchEarthquakes() {
     const url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?' +
       'format=geojson&minlatitude=-45&maxlatitude=-10&minlongitude=110&maxlongitude=155' +
       '&limit=200&orderby=time&minmagnitude=1.5';
-    const res = await fetch(url);
+    const res = await _fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     earthquakeData = await res.json();
     updateLayerCount('earthquakes', earthquakeData.features.length);
@@ -1939,7 +1958,7 @@ const _BOM_WIND_DIR_DEG = {
 function _bomWindDirToDeg(s) { return _BOM_WIND_DIR_DEG[(s || '').toUpperCase()] ?? null; }
 
 async function fetchWeatherBom() {
-  const r = await fetch(`${API}/proxy/bom/all`);
+  const r = await _fetch(`${API}/proxy/bom/all`);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const j = await r.json();
   if (!j.stations || !j.stations.length) throw new Error('BOM catalogue empty');
@@ -1959,7 +1978,7 @@ async function fetchWeatherOpenMeteo() {
   const lats = WEATHER_STATIONS.map(s => s.lat).join(',');
   const lngs = WEATHER_STATIONS.map(s => s.lng).join(',');
   const url = `${API}/proxy/openmeteo?latitude=${encodeURIComponent(lats)}&longitude=${encodeURIComponent(lngs)}`;
-  const res = await fetch(url);
+  const res = await _fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const envelope = await res.json();
   _weatherStale = !!envelope.stale;
@@ -2039,7 +2058,7 @@ async function fetchFires() {
   // Try proxy first
   if (_proxyAvailable) {
     try {
-      const r = await fetch(`${API}/proxy/fires`);
+      const r = await _fetch(`${API}/proxy/fires`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = await r.json();
       if (j.data && j.data.features && j.data.features.length > 0) {
@@ -2056,7 +2075,7 @@ async function fetchFires() {
   }
   // Direct fallback (may CORS-fail from file://)
   try {
-    const res = await fetch('https://www.rfs.nsw.gov.au/feeds/majorIncidents.json');
+    const res = await _fetch('https://www.rfs.nsw.gov.au/feeds/majorIncidents.json');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const raw = await res.json();
     fireData = normalizeFireFeatures(raw);
@@ -2201,7 +2220,7 @@ async function fetchFlights() {
     return;
   }
   try {
-    const r = await fetch(`${API}/proxy/flights`);
+    const r = await _fetch(`${API}/proxy/flights`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (j.data && j.data.aircraft && j.data.aircraft.length > 0) {
@@ -2303,7 +2322,7 @@ function startFlightPollFallback() {
 async function fetchASX() {
   if (!_proxyAvailable) return;
   try {
-    const r = await fetch(`${API}/proxy/asx`);
+    const r = await _fetch(`${API}/proxy/asx`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (j.data && j.data.price) {
@@ -2329,7 +2348,7 @@ async function fetchASX() {
 async function fetchForex() {
   if (!_proxyAvailable) return;
   try {
-    const r = await fetch(`${API}/proxy/forex`);
+    const r = await _fetch(`${API}/proxy/forex`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (j.data) {
@@ -2356,7 +2375,7 @@ async function fetchForex() {
 async function fetchParliament() {
   if (!_proxyAvailable) return;
   try {
-    const r = await fetch(`${API}/proxy/parliament`);
+    const r = await _fetch(`${API}/proxy/parliament`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (j.data) {
@@ -2386,7 +2405,7 @@ async function fetchParliament() {
 async function fetchEnergy() {
   if (!_proxyAvailable) return;
   try {
-    const r = await fetch(`${API}/proxy/energy`);
+    const r = await _fetch(`${API}/proxy/energy`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (j.data) {
@@ -2429,7 +2448,7 @@ async function fetchEnergy() {
 async function fetchABS() {
   if (!_proxyAvailable) return;
   try {
-    const r = await fetch(`${API}/proxy/abs`);
+    const r = await _fetch(`${API}/proxy/abs`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (j.data) {
@@ -2468,7 +2487,7 @@ async function fetchABS() {
 async function fetchFuel() {
   if (!_proxyAvailable) return;
   try {
-    const r = await fetch(`${API}/proxy/fuel`);
+    const r = await _fetch(`${API}/proxy/fuel`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (!j.data) return;
@@ -2501,7 +2520,7 @@ async function fetchFuel() {
 async function fetchRBA() {
   if (!_proxyAvailable) return;
   try {
-    const r = await fetch(`${API}/proxy/rba`);
+    const r = await _fetch(`${API}/proxy/rba`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (j.data && j.data.cash_rate != null) {
@@ -2536,7 +2555,7 @@ async function searchPlace(query) {
       const nominatimPromise = (async () => {
         try {
           const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Australia')}&limit=5&countrycodes=au`;
-          const res = await fetch(url, { signal, headers: { 'User-Agent': 'AtlasOfAustralia/1.0' }});
+          const res = await _fetch(url, { signal, headers: { 'User-Agent': 'AtlasOfAustralia/1.0' }});
           if (!res.ok) return [];
           return await res.json();
         } catch (e) { return []; }
@@ -2909,9 +2928,10 @@ function wireMapSettingsPanel() {
     });
   });
 
-  // Viewshed mode — separate from the overlay system (not persisted, mode-based).
-  document.getElementById('viewshed-mode-btn')?.addEventListener('click', () => {
+  // Viewshed tile controls
+  document.getElementById('viewshed-tile-toggle')?.addEventListener('click', () => {
     toggleViewshed(!_viewshedActive);
+    if (_viewshedActive) _setViewshedStatus('', 'Click map to place observer');
   });
   document.getElementById('viewshed-obs-slider')?.addEventListener('input', (e) => {
     _viewshedObsHeight = parseFloat(e.target.value);
@@ -2920,6 +2940,12 @@ function wireMapSettingsPanel() {
   document.getElementById('viewshed-radius-slider')?.addEventListener('input', (e) => {
     _viewshedRadius = parseFloat(e.target.value);
     document.getElementById('viewshed-radius-val').textContent = `${Number(e.target.value).toFixed(1)}km`;
+  });
+  document.getElementById('viewshed-opacity-slider')?.addEventListener('input', (e) => {
+    _viewshedOpacity = parseInt(e.target.value) / 100;
+    document.getElementById('viewshed-opacity-val').textContent = `${e.target.value}%`;
+    if (map && map.getLayer(VIEWSHED_LAYER))
+      map.setPaintProperty(VIEWSHED_LAYER, 'raster-opacity', _viewshedOpacity);
   });
   document.getElementById('viewshed-clear-btn')?.addEventListener('click', () => {
     clearViewshed();
@@ -3734,16 +3760,20 @@ function _removeIncidentsLayer() {
   if (map.getSource(INCIDENTS_SOURCE)) map.removeSource(INCIDENTS_SOURCE);
   if (_incidentsPollTimer) { clearInterval(_incidentsPollTimer); _incidentsPollTimer = null; }
 }
+let _incidentsFetching = false;
 async function _fetchIncidents() {
+  if (_incidentsFetching) return;
   if (_getSavedOverlay('traffic-incidents') !== 'on') return;
+  _incidentsFetching = true;
   try {
-    const r = await fetch(`${API}/proxy/traffic-incidents`);
+    const r = await _fetch(`${API}/proxy/traffic-incidents`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     _incidentsData = j.data || { type: 'FeatureCollection', features: [] };
     const src = map.getSource(INCIDENTS_SOURCE);
     if (src) src.setData(_incidentsData);
   } catch (e) { console.warn('Incidents fetch failed:', e); }
+  finally { _incidentsFetching = false; }
 }
 function _applyIncidents() {
   if (!map) return;
@@ -3781,18 +3811,23 @@ const VIEWSHED_LAYER  = 'layer-viewshed';
 let _viewshedActive    = false;
 let _viewshedObsHeight = 1.7;   // metres above terrain (eye level default)
 let _viewshedRadius    = 2.0;   // km
+let _viewshedOpacity   = 0.9;   // raster-opacity for the overlay (0–1)
 let _viewshedCanvas    = null;  // offscreen canvas holding last result
+let _viewshedDataUrl   = null;  // PNG data URL — used as image source (avoids canvas-source alpha bugs)
 let _viewshedBounds    = null;  // { minLng, maxLng, minLat, maxLat }
 
 function toggleViewshed(on) {
   _viewshedActive = !!on;
-  const btn      = document.getElementById('viewshed-mode-btn');
-  const stateEl  = document.getElementById('viewshed-toggle-state');
-  const controls = document.getElementById('viewshed-controls');
-  if (btn)      btn.classList.toggle('active', _viewshedActive);
-  if (stateEl)  stateEl.textContent = _viewshedActive ? 'ON' : 'OFF';
-  if (controls) controls.style.display = _viewshedActive ? 'block' : 'none';
-  if (map)      map.getCanvas().style.cursor = _viewshedActive ? 'crosshair' : '';
+  const badge     = document.getElementById('viewshed-tile-badge');
+  const toggleBtn = document.getElementById('viewshed-tile-toggle');
+  const controls  = document.getElementById('viewshed-controls');
+  if (badge) {
+    badge.className   = 'tile-badge ' + (_viewshedActive ? 'live' : 'closed');
+    badge.textContent = _viewshedActive ? 'ON' : 'OFF';
+  }
+  if (toggleBtn) toggleBtn.textContent = _viewshedActive ? 'DISABLE' : 'ENABLE';
+  if (controls)  controls.style.display = _viewshedActive ? 'block' : 'none';
+  if (map)       map.getCanvas().style.cursor = _viewshedActive ? 'crosshair' : '';
   if (!_viewshedActive) clearViewshed();
 }
 
@@ -3800,29 +3835,31 @@ function clearViewshed() {
   if (!map) return;
   if (map.getLayer(VIEWSHED_LAYER))   map.removeLayer(VIEWSHED_LAYER);
   if (map.getSource(VIEWSHED_SOURCE)) map.removeSource(VIEWSHED_SOURCE);
-  _viewshedCanvas = null;
-  _viewshedBounds = null;
+  _viewshedCanvas  = null;
+  _viewshedDataUrl = null;
+  _viewshedBounds  = null;
+  const pctEl = document.getElementById('viewshed-tile-pct');
+  if (pctEl) { pctEl.textContent = '—'; pctEl.style.color = 'var(--dim2)'; }
 }
 
-// Re-add viewshed canvas source after a basemap swap (setStyle drops all sources).
+// Re-add viewshed layer after a basemap swap (setStyle drops all sources).
 function _readdViewshed() {
-  if (!_viewshedCanvas || !_viewshedBounds) return;
+  if (!_viewshedDataUrl || !_viewshedBounds) return;
   const b = _viewshedBounds;
   try {
     map.addSource(VIEWSHED_SOURCE, {
-      type: 'canvas',
-      canvas: _viewshedCanvas,
+      type: 'image',
+      url: _viewshedDataUrl,
       coordinates: [
         [b.minLng, b.maxLat],
         [b.maxLng, b.maxLat],
         [b.maxLng, b.minLat],
         [b.minLng, b.minLat],
       ],
-      animate: false,
     });
     map.addLayer({
       id: VIEWSHED_LAYER, type: 'raster',
-      source: VIEWSHED_SOURCE, paint: { 'raster-opacity': 1.0 },
+      source: VIEWSHED_SOURCE, paint: { 'raster-opacity': _viewshedOpacity },
     });
   } catch (e) { console.warn('viewshed re-add failed:', e); }
 }
@@ -3871,7 +3908,7 @@ async function runViewshed(lat, lng) {
   if (map) map.getCanvas().style.cursor = 'wait';
 
   try {
-    const resp = await fetch(`${API}/proxy/elevation-grid?lat=${lat}&lng=${lng}&radius_km=${_viewshedRadius}`);
+    const resp = await _fetch(`${API}/proxy/elevation-grid?lat=${lat}&lng=${lng}&radius_km=${_viewshedRadius}`);
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({}));
       throw new Error(body.detail || `HTTP ${resp.status}`);
@@ -3902,49 +3939,85 @@ async function runViewshed(lat, lng) {
 
     const vis = _computeViewshed(grid, w, h, obsRow, obsCol, obsElevM, cellSizeM);
 
-    // Render to offscreen canvas: green = visible, red = hidden
+    // ── Render to offscreen canvas ──────────────────────────────
+    // Visible cells → emerald (#34d399) at solid alpha 210.
+    // Hidden cells  → transparent (alpha 0); basemap shows through.
+    // A soft circular mask (destination-out gradient) dissolves the
+    // rectangular bbox edge into the map naturally.
+    //
+    // We then export to a PNG data URL and use type:'image' instead of
+    // type:'canvas'. MapLibre's canvas-source has premultiplied-alpha
+    // compositing quirks that produce a black overlay in 3D terrain mode;
+    // the image source path does not have this problem.
     const canvas = document.createElement('canvas');
     canvas.width  = w;
     canvas.height = h;
     const ctx     = canvas.getContext('2d');
     const imgData = ctx.createImageData(w, h);
+
     for (let i = 0; i < w * h; i++) {
-      const p = i * 4;
       if (vis[i]) {
-        imgData.data[p]   = 0;    imgData.data[p+1] = 200;
-        imgData.data[p+2] = 80;   imgData.data[p+3] = 140;  // visible: green
-      } else {
-        imgData.data[p]   = 200;  imgData.data[p+1] = 0;
-        imgData.data[p+2] = 40;   imgData.data[p+3] = 110;  // hidden: red
+        const p = i * 4;
+        imgData.data[p]   = 52;   // Emerald R
+        imgData.data[p+1] = 211;  // Emerald G
+        imgData.data[p+2] = 153;  // Emerald B
+        imgData.data[p+3] = 210;  // solid — fading handled by the mask below
       }
+      // hidden → stays (0,0,0,0)
     }
     ctx.putImageData(imgData, 0, 0);
 
+    // Soft circular mask: erase pixels outside the observer radius so the
+    // bbox rectangle dissolves into the map rather than hard-cutting.
+    // destination-out uses the *drawn shape's alpha* to punch holes in the canvas.
+    const maskR = Math.min(obsRow, h - 1 - obsRow, obsCol, w - 1 - obsCol) * 0.96;
+    const grad  = ctx.createRadialGradient(obsCol, obsRow, maskR * 0.78, obsCol, obsRow, maskR * 1.08);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');  // inner: don't erase
+    grad.addColorStop(1, 'rgba(0,0,0,1)');  // outer rim: fully erase
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'source-over';
+
+    // Observer marker (drawn after mask so it's always visible at centre)
+    const r0 = Math.max(0, Math.min(h - 1, obsRow));
+    const c0 = Math.max(0, Math.min(w - 1, obsCol));
+    ctx.beginPath(); ctx.arc(c0, r0, 8,   0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(56,189,248,0.45)'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.arc(c0, r0, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle   = 'rgba(255,255,255,0.95)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(56,189,248,1)';     ctx.lineWidth = 1.5; ctx.stroke();
+
+    // Export to PNG data URL — avoids canvas-source premul-alpha black-on-3D-terrain bug
+    const dataUrl = canvas.toDataURL('image/png');
+
     // Tear down previous result, install new one
     clearViewshed();
-    _viewshedCanvas = canvas;
-    _viewshedBounds = bounds;
+    _viewshedCanvas  = canvas;
+    _viewshedDataUrl = dataUrl;
+    _viewshedBounds  = bounds;
 
     map.addSource(VIEWSHED_SOURCE, {
-      type: 'canvas',
-      canvas: canvas,
+      type: 'image',
+      url: dataUrl,
       coordinates: [
         [bounds.minLng, bounds.maxLat],
         [bounds.maxLng, bounds.maxLat],
         [bounds.maxLng, bounds.minLat],
         [bounds.minLng, bounds.minLat],
       ],
-      animate: false,
     });
     map.addLayer({
       id: VIEWSHED_LAYER, type: 'raster',
-      source: VIEWSHED_SOURCE, paint: { 'raster-opacity': 1.0 },
+      source: VIEWSHED_SOURCE, paint: { 'raster-opacity': _viewshedOpacity },
     });
 
     let visCount = 0;
     for (let i = 0; i < vis.length; i++) if (vis[i]) visCount++;
     const visPct = Math.round(visCount / vis.length * 100);
-    _setViewshedStatus('done', `Done \u2014 ${visPct}% terrain visible`);
+    const pctEl = document.getElementById('viewshed-tile-pct');
+    if (pctEl) { pctEl.textContent = `${visPct}%`; pctEl.style.color = 'var(--emerald)'; }
+    _setViewshedStatus('done', `${visPct}% terrain visible`);
 
   } catch (err) {
     console.error('viewshed error:', err);
@@ -5168,7 +5241,7 @@ async function fetchWeatherDetail(lat, lng) {
   // Route through proxy so per-station detail also benefits from caching
   // and stale-fallback when Open-Meteo's daily quota is exhausted.
   const url = `${API}/proxy/openmeteo/detail?latitude=${lat}&longitude=${lng}`;
-  const r = await fetch(url);
+  const r = await _fetch(url);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const envelope = await r.json();
   const data = envelope.data;
@@ -5278,7 +5351,7 @@ async function fetchBomObservation(name, lat, lng) {
   const meta = _findBomMeta(name, lat, lng);
   if (!meta || !meta.product || !meta.wmo) return null;
   try {
-    const r = await fetch(`${API}/proxy/bom/observation?product=${meta.product}&wmo=${meta.wmo}`);
+    const r = await _fetch(`${API}/proxy/bom/observation?product=${meta.product}&wmo=${meta.wmo}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     return j.data ? { ...j.data, _stale: !!j.stale, _state: meta.state } : null;
@@ -5288,7 +5361,7 @@ async function fetchBomObservation(name, lat, lng) {
 async function fetchBomWarnings(state) {
   if (!state) return null;
   try {
-    const r = await fetch(`${API}/proxy/bom/warnings?state=${state}`);
+    const r = await _fetch(`${API}/proxy/bom/warnings?state=${state}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     return j.data || null;
@@ -5497,14 +5570,14 @@ async function openWeatherModal(name, lat, lng, precomputed, opts = {}) {
     renderWeatherModal(name, lat, lng, precomputed, detail, bom, warnings);
   } catch (e) {
     if (modal.classList.contains('hidden')) return;
-    if (body) body.innerHTML = `<div style="color:var(--rose);font-size:11px;padding:20px">Error loading forecast: ${e.message}</div>`;
+    if (body) body.innerHTML = `<div style="color:var(--rose);font-size:11px;padding:20px">Error loading forecast: ${e?.message || String(e)}</div>`;
   }
 }
 
 // Force-refresh variant: bypass both client-side and server-side cache
 async function fetchWeatherDetailFresh(lat, lng) {
   const url = `${API}/proxy/openmeteo/detail?latitude=${lat}&longitude=${lng}&force=1`;
-  const r = await fetch(url);
+  const r = await _fetch(url);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const envelope = await r.json();
   const data = envelope.data;
@@ -5593,7 +5666,7 @@ const RAINVIEWER_PAST_FRAMES = 5;
 
 async function ensureRainviewerData() {
   if (_rainviewerData && Date.now() - _rainviewerData.fetchedAt < 10 * 60 * 1000) return _rainviewerData;
-  const r = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+  const r = await _fetch('https://api.rainviewer.com/public/weather-maps.json');
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const j = await r.json();
   const pastAll = j.radar?.past || [];
@@ -5661,7 +5734,7 @@ async function _preloadAllRadarFrames(concurrency = 8) {
     while (cursor < urls.length) {
       const url = urls[cursor++];
       try {
-        const r = await fetch(url);
+        const r = await _fetch(url);
         await r.blob(); // drain body so connection returns to pool
       } catch (_) { /* ignore individual failures */ }
       _radarPreloadProgress.done++;
@@ -6227,7 +6300,7 @@ let speedCamData = null;
 async function fetchSpeedCameras() {
   if (!_proxyAvailable) return null;
   try {
-    const r = await fetch(`${API}/proxy/speed-cameras`);
+    const r = await _fetch(`${API}/proxy/speed-cameras`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     const fc = j.data || { type: 'FeatureCollection', features: [] };
@@ -7128,7 +7201,7 @@ async function loadFuelStations(product) {
   const statusEl = document.getElementById('fuel-search-status');
   if (statusEl) statusEl.textContent = `Loading ${product} stations…`;
   try {
-    const r = await fetch(`${API}/proxy/fuel-stations?product=${encodeURIComponent(product)}`);
+    const r = await _fetch(`${API}/proxy/fuel-stations?product=${encodeURIComponent(product)}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     _fuelStations = (j.stations || []).slice().sort((a, b) => a.price - b.price);
@@ -7139,7 +7212,7 @@ async function loadFuelStations(product) {
     refreshFuelLayer();
     return _fuelStations;
   } catch (e) {
-    if (statusEl) statusEl.textContent = `Error loading stations: ${e.message}`;
+    if (statusEl) statusEl.textContent = `Error loading stations: ${e?.message || String(e)}`;
     return [];
   }
 }
@@ -7244,7 +7317,7 @@ async function runFuelSearch() {
   // Geocode postcode
   if (statusEl) statusEl.textContent = `Looking up postcode ${pc}…`;
   try {
-    const r = await fetch(`${API}/proxy/postcode?code=${encodeURIComponent(pc)}`);
+    const r = await _fetch(`${API}/proxy/postcode?code=${encodeURIComponent(pc)}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     if (!j.ok) {
@@ -7269,7 +7342,7 @@ async function runFuelSearch() {
     if (src) src.setData(_fuelStationGeoJSON(nearby));
     renderFuelResults(nearby, { lat: j.lat, lng: j.lng });
   } catch (e) {
-    if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+    if (statusEl) statusEl.textContent = `Error: ${e?.message || String(e)}`;
   }
 }
 
