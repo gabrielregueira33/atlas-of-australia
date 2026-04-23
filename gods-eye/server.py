@@ -14,6 +14,7 @@ import csv
 import io
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -3069,6 +3070,161 @@ async def proxy_speed_cameras():
         cached=False,
         error="; ".join(errors) or "all sources failed",
     )
+
+
+# ─── ELEVATION GRID (viewshed support) ──────────────────────────
+# Stitches AWS Terrarium terrain tiles into a cropped 256×256 elevation
+# grid for the client-side viewshed analysis tool.
+# Requires Pillow: pip install Pillow
+# Terrarium encoding: elev_m = R * 256 + G + B / 256 − 32768
+_TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
+_ELEVATION_GRID_SIZE = 256
+
+
+def _ll_to_tile(lat: float, lng: float, zoom: int) -> tuple[int, int]:
+    n = 1 << zoom
+    x = int((lng + 180.0) / 360.0 * n)
+    sin_lat = math.sin(math.radians(lat))
+    y_frac = (1.0 - math.log((1 + sin_lat) / (1 - sin_lat)) / (2 * math.pi)) / 2.0
+    y = int(max(0.0, y_frac) * n)
+    return x, y
+
+
+def _tile_nw_corner(tx: int, ty: int, zoom: int) -> tuple[float, float]:
+    n = 1 << zoom
+    lng = tx / n * 360.0 - 180.0
+    lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * ty / n))))
+    return lat, lng
+
+
+def _mercator_y_frac(lat: float) -> float:
+    sin_lat = math.sin(math.radians(lat))
+    return (1.0 - math.log((1 + sin_lat) / (1 - sin_lat)) / (2 * math.pi)) / 2.0
+
+
+@app.get("/proxy/elevation-grid")
+async def proxy_elevation_grid(lat: float, lng: float, radius_km: float = 2.0):
+    """
+    Return a cropped 256x256 elevation grid (metres) centred on (lat, lng)
+    covering ±radius_km.  Source: AWS Terrain Tiles (Terrarium, global SRTM).
+    Requires Pillow: pip install Pillow
+    """
+    try:
+        from PIL import Image as _Image
+    except ImportError:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(
+            status_code=501,
+            detail="Pillow not installed — run: pip install Pillow",
+        )
+
+    radius_km = max(0.5, min(10.0, radius_km))
+
+    # Choose tile zoom so the bbox spans roughly 2-4 tiles per axis.
+    if radius_km <= 2:
+        zoom = 13
+    elif radius_km <= 5:
+        zoom = 12
+    else:
+        zoom = 11
+
+    lat_delta = radius_km / 111.0
+    lng_delta = radius_km / max(0.01, 111.0 * math.cos(math.radians(lat)))
+    min_lat, max_lat = lat - lat_delta, lat + lat_delta
+    min_lng, max_lng = lng - lng_delta, lng + lng_delta
+
+    # y increases south so max_lat → min_tile_y, min_lat → max_tile_y
+    min_tx, min_ty = _ll_to_tile(max_lat, min_lng, zoom)
+    max_tx, max_ty = _ll_to_tile(min_lat, max_lng, zoom)
+
+    if (max_tx - min_tx + 1) * (max_ty - min_ty + 1) > 16:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=400, detail="Radius too large; reduce radius_km and retry")
+
+    # Fetch all required tiles in parallel
+    http = await client()
+    tile_bytes: dict[tuple[int, int], bytes] = {}
+
+    async def _fetch_tile(tx: int, ty: int) -> None:
+        url = _TERRARIUM_URL.format(z=zoom, x=tx, y=ty)
+        try:
+            r = await http.get(url, headers=_HEADERS, timeout=10.0)
+            if r.status_code == 200:
+                tile_bytes[(tx, ty)] = r.content
+        except Exception as exc:
+            log.warning("elevation tile %s/%s/%s failed: %s", zoom, tx, ty, exc)
+
+    await asyncio.gather(*[
+        _fetch_tile(tx, ty)
+        for tx in range(min_tx, max_tx + 1)
+        for ty in range(min_ty, max_ty + 1)
+    ])
+
+    if not tile_bytes:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=503, detail="Could not fetch elevation tiles — check connectivity")
+
+    # Stitch tiles into one RGB image (sentinel (128,0,0) ≈ sea-level)
+    tile_cols = max_tx - min_tx + 1
+    tile_rows = max_ty - min_ty + 1
+    stitched = _Image.new("RGB", (tile_cols * 256, tile_rows * 256), (128, 0, 0))
+    for (tx, ty), data in tile_bytes.items():
+        try:
+            tile_img = _Image.open(io.BytesIO(data)).convert("RGB")
+            stitched.paste(tile_img, ((tx - min_tx) * 256, (ty - min_ty) * 256))
+        except Exception as exc:
+            log.warning("tile decode (%s,%s) failed: %s", tx, ty, exc)
+
+    img_w, img_h = stitched.size
+
+    # Convert bbox corners to pixel coordinates using Mercator projection.
+    nw_lat, nw_lng = _tile_nw_corner(min_tx, min_ty, zoom)
+    se_lat, se_lng = _tile_nw_corner(max_tx + 1, max_ty + 1, zoom)
+    img_y_north = _mercator_y_frac(nw_lat)
+    img_y_south = _mercator_y_frac(se_lat)
+
+    def _to_px(qlat: float, qlng: float) -> tuple[float, float]:
+        px = (qlng - nw_lng) / (se_lng - nw_lng) * img_w
+        py = (_mercator_y_frac(qlat) - img_y_north) / (img_y_south - img_y_north) * img_h
+        return px, py
+
+    crop_left, crop_top     = _to_px(max_lat, min_lng)
+    crop_right, crop_bottom = _to_px(min_lat, max_lng)
+    crop_box = (
+        max(0, int(crop_left)),
+        max(0, int(crop_top)),
+        min(img_w, int(crop_right) + 1),
+        min(img_h, int(crop_bottom) + 1),
+    )
+    cropped = stitched.crop(crop_box)
+
+    # Resize to output grid and decode Terrarium elevation values
+    out_n = _ELEVATION_GRID_SIZE
+    resized = cropped.resize((out_n, out_n), _Image.BILINEAR)
+    px_access = resized.load()
+
+    grid: list[list[int]] = []
+    for row in range(out_n):
+        grid_row: list[int] = []
+        for col in range(out_n):
+            r_val, g_val, b_val = px_access[col, row]
+            elev = round(r_val * 256 + g_val + b_val / 256 - 32768)
+            grid_row.append(elev)
+        grid.append(grid_row)
+
+    return {
+        "grid": grid,
+        "width": out_n,
+        "height": out_n,
+        "bounds": {
+            "minLng": min_lng,
+            "maxLng": max_lng,
+            "minLat": min_lat,
+            "maxLat": max_lat,
+        },
+        "zoom": zoom,
+        "radius_km": radius_km,
+    }
 
 
 @app.get("/proxy/status")

@@ -114,6 +114,40 @@
 .settings-toggle .toggle-state { font-size: 9px; opacity: 0.55; letter-spacing: 0.1em; }
 .settings-toggle.active .toggle-state { opacity: 1; color: var(--emerald); }
 
+/* ── Viewshed analysis controls ─────────────────────────────── */
+.viewshed-controls { padding-top: 8px; }
+.viewshed-slider-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--dim); letter-spacing: 0.08em; margin-bottom: 3px;
+}
+.viewshed-slider-val { color: var(--accent); font-weight: 600; }
+.viewshed-slider {
+  -webkit-appearance: none; width: 100%; height: 3px;
+  background: rgba(148,163,184,0.18); border-radius: 2px;
+  accent-color: var(--accent); margin-bottom: 10px; cursor: pointer;
+}
+.viewshed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px;
+  border-radius: 50%; background: var(--accent); cursor: pointer;
+}
+.viewshed-status {
+  font-size: 9px; color: var(--dim); letter-spacing: 0.06em;
+  margin-top: 4px; min-height: 14px; font-family: var(--font-mono);
+  line-height: 1.4;
+}
+.viewshed-status.loading { color: var(--amber); }
+.viewshed-status.done    { color: var(--emerald); }
+.viewshed-status.error   { color: var(--rose); }
+.viewshed-clear-btn {
+  width: 100%; margin-top: 8px; padding: 6px;
+  background: rgba(251,113,133,0.07); border: 1px solid rgba(251,113,133,0.22);
+  color: var(--rose); font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 0.08em; border-radius: 4px; cursor: pointer;
+  transition: background 120ms, border-color 120ms;
+}
+.viewshed-clear-btn:hover { background: rgba(251,113,133,0.16); border-color: rgba(251,113,133,0.5); }
+
 /* Hide-tiles mode — keeps the map and header visible, tucks away every
    data tile / layer panel / status bar so the map is unobstructed. */
 html[data-tiles="hidden"] #card-tray,
@@ -1057,6 +1091,24 @@ html, body {
     <button class="settings-toggle" data-overlay="traffic-incidents">
       <span>Incidents</span><span class="toggle-state">OFF</span>
     </button>
+  </div>
+  <div class="settings-section">
+    <div class="settings-label">ANALYSIS</div>
+    <button class="settings-toggle" id="viewshed-mode-btn">
+      <span>Viewshed / LoS</span><span class="toggle-state" id="viewshed-toggle-state">OFF</span>
+    </button>
+    <div class="viewshed-controls" id="viewshed-controls" style="display:none">
+      <div class="viewshed-slider-row">
+        <span>Observer height</span><span class="viewshed-slider-val" id="viewshed-obs-val">1.7m</span>
+      </div>
+      <input id="viewshed-obs-slider" class="viewshed-slider" type="range" min="1.7" max="50" step="0.5" value="1.7">
+      <div class="viewshed-slider-row">
+        <span>Radius</span><span class="viewshed-slider-val" id="viewshed-radius-val">2.0km</span>
+      </div>
+      <input id="viewshed-radius-slider" class="viewshed-slider" type="range" min="0.5" max="10" step="0.5" value="2">
+      <div class="viewshed-status" id="viewshed-status">Click map to place observer</div>
+      <button class="viewshed-clear-btn" id="viewshed-clear-btn">CLEAR</button>
+    </div>
   </div>
   <div style="font-size:9px;color:var(--dim2);margin-top:8px;letter-spacing:0.04em;line-height:1.4">Changes save automatically &amp; persist on reload.</div>
 </div>
@@ -2719,6 +2771,7 @@ function _performBasemapSwap(next) {
     setTimeout(() => {
       try { _enhanceBasemap(); } catch (e) { console.warn('basemap enhance failed:', e); }
       try { _applyAllOverlays(); } catch (e) { console.warn('overlays re-apply failed:', e); }
+      try { _readdViewshed(); } catch (e) { console.warn('viewshed re-add failed:', e); }
     }, 0);
   };
   const onStyledata = () => { if (map.isStyleLoaded()) performReadd(); };
@@ -2854,6 +2907,23 @@ function wireMapSettingsPanel() {
       else if (id === 'traffic-incidents') _applyIncidents();
       refreshActiveStates();
     });
+  });
+
+  // Viewshed mode — separate from the overlay system (not persisted, mode-based).
+  document.getElementById('viewshed-mode-btn')?.addEventListener('click', () => {
+    toggleViewshed(!_viewshedActive);
+  });
+  document.getElementById('viewshed-obs-slider')?.addEventListener('input', (e) => {
+    _viewshedObsHeight = parseFloat(e.target.value);
+    document.getElementById('viewshed-obs-val').textContent = `${Number(e.target.value).toFixed(1)}m`;
+  });
+  document.getElementById('viewshed-radius-slider')?.addEventListener('input', (e) => {
+    _viewshedRadius = parseFloat(e.target.value);
+    document.getElementById('viewshed-radius-val').textContent = `${Number(e.target.value).toFixed(1)}km`;
+  });
+  document.getElementById('viewshed-clear-btn')?.addEventListener('click', () => {
+    clearViewshed();
+    _setViewshedStatus('', 'Click map to place observer');
   });
 }
 // (Satellite now uses MapTiler's own satellite style for provider consistency —
@@ -3698,6 +3768,192 @@ function _applyAllOverlays() {
   _applyIncidents();
 }
 
+// ═══════════════════════════════════════════════════════════════
+// VIEWSHED / LINE-OF-SIGHT ANALYSIS
+// ═══════════════════════════════════════════════════════════════
+// User clicks the map while mode is active → proxy fetches an AWS Terrarium
+// elevation grid (server-side Pillow decode) → ray-cast viewshed algorithm
+// runs client-side → green/red canvas overlay added as a MapLibre raster source.
+
+const VIEWSHED_SOURCE = 'src-viewshed';
+const VIEWSHED_LAYER  = 'layer-viewshed';
+
+let _viewshedActive    = false;
+let _viewshedObsHeight = 1.7;   // metres above terrain (eye level default)
+let _viewshedRadius    = 2.0;   // km
+let _viewshedCanvas    = null;  // offscreen canvas holding last result
+let _viewshedBounds    = null;  // { minLng, maxLng, minLat, maxLat }
+
+function toggleViewshed(on) {
+  _viewshedActive = !!on;
+  const btn      = document.getElementById('viewshed-mode-btn');
+  const stateEl  = document.getElementById('viewshed-toggle-state');
+  const controls = document.getElementById('viewshed-controls');
+  if (btn)      btn.classList.toggle('active', _viewshedActive);
+  if (stateEl)  stateEl.textContent = _viewshedActive ? 'ON' : 'OFF';
+  if (controls) controls.style.display = _viewshedActive ? 'block' : 'none';
+  if (map)      map.getCanvas().style.cursor = _viewshedActive ? 'crosshair' : '';
+  if (!_viewshedActive) clearViewshed();
+}
+
+function clearViewshed() {
+  if (!map) return;
+  if (map.getLayer(VIEWSHED_LAYER))   map.removeLayer(VIEWSHED_LAYER);
+  if (map.getSource(VIEWSHED_SOURCE)) map.removeSource(VIEWSHED_SOURCE);
+  _viewshedCanvas = null;
+  _viewshedBounds = null;
+}
+
+// Re-add viewshed canvas source after a basemap swap (setStyle drops all sources).
+function _readdViewshed() {
+  if (!_viewshedCanvas || !_viewshedBounds) return;
+  const b = _viewshedBounds;
+  try {
+    map.addSource(VIEWSHED_SOURCE, {
+      type: 'canvas',
+      canvas: _viewshedCanvas,
+      coordinates: [
+        [b.minLng, b.maxLat],
+        [b.maxLng, b.maxLat],
+        [b.maxLng, b.minLat],
+        [b.minLng, b.minLat],
+      ],
+      animate: false,
+    });
+    map.addLayer({
+      id: VIEWSHED_LAYER, type: 'raster',
+      source: VIEWSHED_SOURCE, paint: { 'raster-opacity': 1.0 },
+    });
+  } catch (e) { console.warn('viewshed re-add failed:', e); }
+}
+
+// Ray-cast viewshed algorithm. Grid is a flat Int16Array, row-major, row 0 = north.
+// Returns Uint8Array: 1 = visible from observer, 0 = terrain-blocked.
+// For each target cell, walks the ray from observer outward tracking the maximum
+// elevation angle seen so far; visible iff target angle >= running max.
+function _computeViewshed(grid, w, h, obsRow, obsCol, obsElevM, cellSizeM) {
+  const vis = new Uint8Array(w * h);
+  for (let r = 0; r < h; r++) {
+    for (let c = 0; c < w; c++) {
+      const idx = r * w + c;
+      if (r === obsRow && c === obsCol) { vis[idx] = 1; continue; }
+      const dr = r - obsRow;
+      const dc = c - obsCol;
+      const steps = Math.max(Math.abs(dr), Math.abs(dc));
+      let maxAngle = -Infinity;
+      for (let i = 1; i < steps; i++) {
+        const t   = i / steps;
+        const ir  = Math.round(obsRow + t * dr);
+        const ic  = Math.round(obsCol + t * dc);
+        if (ir < 0 || ir >= h || ic < 0 || ic >= w) break;
+        const distM  = Math.hypot((ic - obsCol) * cellSizeM, (ir - obsRow) * cellSizeM);
+        const angle  = (grid[ir * w + ic] - obsElevM) / distM;
+        if (angle > maxAngle) maxAngle = angle;
+      }
+      const targetDist  = Math.hypot((c - obsCol) * cellSizeM, (r - obsRow) * cellSizeM);
+      const targetAngle = (grid[idx] - obsElevM) / targetDist;
+      vis[idx] = targetAngle >= maxAngle ? 1 : 0;
+    }
+  }
+  return vis;
+}
+
+function _setViewshedStatus(state, msg) {
+  const el = document.getElementById('viewshed-status');
+  if (!el) return;
+  el.className = 'viewshed-status' + (state ? ' ' + state : '');
+  el.textContent = msg;
+}
+
+async function runViewshed(lat, lng) {
+  if (!_viewshedActive) return;
+  _setViewshedStatus('loading', 'Fetching elevation data\u2026');
+  if (map) map.getCanvas().style.cursor = 'wait';
+
+  try {
+    const resp = await fetch(`${API}/proxy/elevation-grid?lat=${lat}&lng=${lng}&radius_km=${_viewshedRadius}`);
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${resp.status}`);
+    }
+    const { grid: gridRows, width: w, height: h, bounds } = await resp.json();
+
+    _setViewshedStatus('loading', 'Computing line-of-sight\u2026');
+
+    // Flatten nested array to typed Int16Array for speed
+    const grid = new Int16Array(w * h);
+    for (let row = 0; row < h; row++)
+      for (let col = 0; col < w; col++)
+        grid[row * w + col] = gridRows[row][col];
+
+    // Observer cell — row 0 corresponds to maxLat (north)
+    const obsCol = Math.round((lng - bounds.minLng) / (bounds.maxLng - bounds.minLng) * (w - 1));
+    const obsRow = Math.round((bounds.maxLat - lat) / (bounds.maxLat - bounds.minLat) * (h - 1));
+
+    // Cell size in metres (avg of lat and lng axes at the observer latitude)
+    const latCellM  = (bounds.maxLat - bounds.minLat) * 111000 / h;
+    const lngCellM  = (bounds.maxLng - bounds.minLng) * 111000 * Math.cos(lat * Math.PI / 180) / w;
+    const cellSizeM = (latCellM + lngCellM) / 2;
+
+    // Observer elevation = terrain + observer height offset
+    const clampedRow = Math.max(0, Math.min(h - 1, obsRow));
+    const clampedCol = Math.max(0, Math.min(w - 1, obsCol));
+    const obsElevM   = grid[clampedRow * w + clampedCol] + _viewshedObsHeight;
+
+    const vis = _computeViewshed(grid, w, h, obsRow, obsCol, obsElevM, cellSizeM);
+
+    // Render to offscreen canvas: green = visible, red = hidden
+    const canvas = document.createElement('canvas');
+    canvas.width  = w;
+    canvas.height = h;
+    const ctx     = canvas.getContext('2d');
+    const imgData = ctx.createImageData(w, h);
+    for (let i = 0; i < w * h; i++) {
+      const p = i * 4;
+      if (vis[i]) {
+        imgData.data[p]   = 0;    imgData.data[p+1] = 200;
+        imgData.data[p+2] = 80;   imgData.data[p+3] = 140;  // visible: green
+      } else {
+        imgData.data[p]   = 200;  imgData.data[p+1] = 0;
+        imgData.data[p+2] = 40;   imgData.data[p+3] = 110;  // hidden: red
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // Tear down previous result, install new one
+    clearViewshed();
+    _viewshedCanvas = canvas;
+    _viewshedBounds = bounds;
+
+    map.addSource(VIEWSHED_SOURCE, {
+      type: 'canvas',
+      canvas: canvas,
+      coordinates: [
+        [bounds.minLng, bounds.maxLat],
+        [bounds.maxLng, bounds.maxLat],
+        [bounds.maxLng, bounds.minLat],
+        [bounds.minLng, bounds.minLat],
+      ],
+      animate: false,
+    });
+    map.addLayer({
+      id: VIEWSHED_LAYER, type: 'raster',
+      source: VIEWSHED_SOURCE, paint: { 'raster-opacity': 1.0 },
+    });
+
+    let visCount = 0;
+    for (let i = 0; i < vis.length; i++) if (vis[i]) visCount++;
+    const visPct = Math.round(visCount / vis.length * 100);
+    _setViewshedStatus('done', `Done \u2014 ${visPct}% terrain visible`);
+
+  } catch (err) {
+    console.error('viewshed error:', err);
+    _setViewshedStatus('error', `Error: ${err.message}`);
+  } finally {
+    if (map) map.getCanvas().style.cursor = _viewshedActive ? 'crosshair' : '';
+  }
+}
+
 // Crisp labels. MapTiler ships with halo-width 2-3px + soft blur, which
 // reads as fuzzy even at 1x DPI. Clamp halo-width tight, zero the blur, and
 // use a halo colour that matches the basemap: dark halo on dark, light halo
@@ -4511,6 +4767,13 @@ async function initMap() {
   // projection / accent sections). Replaces the old separate DARK/FLAT
   // toggle buttons. All selections auto-persist to localStorage.
   wireMapSettingsPanel();
+
+  // Viewshed mode — general click handler; layer-specific handlers check
+  // _viewshedActive themselves (see individual layer click handlers).
+  map.on('click', (e) => {
+    if (!_viewshedActive) return;
+    runViewshed(e.lngLat.lat, e.lngLat.lng);
+  });
 
   // Track mouse position
   map.on('mousemove', (e) => {
