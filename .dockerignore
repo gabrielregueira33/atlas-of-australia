@@ -3,5 +3,20 @@
 **/__pycache__
 **/*.pyc
 .env
+.env.*
 .git
 .gitignore
+.venv
+venv
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+.claude
+*.md
+!gods-eye/CLAUDE.md
+# Frozen Atlas proof-of-concept (per CLAUDE.md, not part of God's Eye runtime)
+api/
+frontend/
+db/
+contracts/

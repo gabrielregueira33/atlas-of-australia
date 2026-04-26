@@ -1,15 +1,36 @@
 # God's Eye — Atlas of Australia
 
 A single-page situational-awareness dashboard for Australia: live flights, fires,
-earthquakes, weather stations, fuel, markets, road traffic, speed cameras, and
-more — rendered on a MapLibre globe with toggleable data layers.
+earthquakes, weather stations, fuel, markets, road traffic, speed cameras,
+NSW live traffic webcams, and more — rendered on a MapLibre globe with
+toggleable data layers organised by domain card.
 
-One Python server, one HTML file. No Docker.
+One Python server, one HTML file. Run locally with Python or anywhere with Docker.
 
 ```bash
-cd gods-eye
-python server.py    # http://localhost:8777
+# Local Python
+cd gods-eye && python server.py    # http://localhost:8777
+
+# Or Docker (from repo root)
+docker build -t gods-eye . && docker run --rm -p 8777:8777 --env-file .env gods-eye
 ```
+
+## Deploy
+
+The repo includes `Dockerfile`, `requirements.txt`, and `fly.toml` for one-command
+deployment to [Fly.io](https://fly.io). The server reads `PORT` from env, so the
+same image runs cleanly on Render, Railway, or your own Docker host.
+
+```bash
+flyctl auth login
+fly launch --copy-config --no-deploy   # accepts fly.toml as-is; pick an app name + region
+flyctl secrets set MAPTILER_KEY=... GOOGLE_MAPS_BROWSER_KEY=... TOMTOM_KEY=... \
+                   NSW_TRAFFIC_API_KEY=... NSW_FUEL_API_KEY=... NSW_FUEL_AUTH_HEADER=...
+fly deploy
+```
+
+The free Fly tier (256 MB, shared CPU, syd region) is plenty for this app.
+WebSocket-based flight push works natively — no polling fallback needed.
 
 ## Configuration
 

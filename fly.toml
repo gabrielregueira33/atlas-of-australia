@@ -1,0 +1,35 @@
+# Fly.io app config for God's Eye.
+# - Builds from the repo Dockerfile.
+# - Listens on the PORT env var Fly injects (server.py honours it).
+# - Single small VM: matches free-tier shape (256 MB, 1 shared CPU).
+# Deploy with:  flyctl auth login  &&  fly launch  &&  fly deploy
+# Then set the secrets:  flyctl secrets set MAPTILER_KEY=...  GOOGLE_MAPS_BROWSER_KEY=...  TOMTOM_KEY=...  NSW_TRAFFIC_API_KEY=...  NSW_FUEL_API_KEY=...  NSW_FUEL_AUTH_HEADER=...
+
+# `app` gets set by `fly launch`; pre-filling here is optional.
+# app = "atlas-of-australia"
+primary_region = "syd"
+
+[build]
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/proxy/status"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
