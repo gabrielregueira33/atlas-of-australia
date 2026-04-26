@@ -6,6 +6,28 @@ Each item lists **rough scope** so it's easy to pick one that fits the time you 
 
 ---
 
+## Tile → rich expanded card / popup (premium UX)
+
+Tiles in the bottom card-tray are currently compact summaries with a few toggle rows. Each domain has much more data we *could* surface — historical sparklines, per-state breakdowns, top-N lists, severity histograms, the underlying station/source list, and per-layer config (opacity, time-window sliders, filters).
+
+**Concept:** clicking a tile's title (or a dedicated expand button) opens an expanded card overlay with a richer view:
+
+- Per-tile expanded layout with a "premium" feel: hero stat block, secondary stats row, sparkline / mini-chart, top-N list, filter chips, layer config controls, and a CTA back to the map (e.g. "fit to features").
+- Reuse existing modal infrastructure (`maplibregl-popup` styling, the flight-detail modal pattern at index.html ~line 4000–4400 is the closest existing template).
+- Domain-specific content per tile:
+  - **Weather** — MIN/MAX/RAIN trio (already added) + temp histogram, top 5 hottest/coldest towns, rain leaderboard, radar timestamp + loop control, heatmap intensity slider, wind opacity slider.
+  - **Flights** — by-state count, average altitude/speed sparkline, top airlines, in-air vs taxiing.
+  - **Hazards** — fires by state, severity histogram, recent quakes table, magnitude sparkline.
+  - **Traffic** — incidents by category, severity breakdown, top affected roads, flow opacity slider, freshness chip.
+  - **Speed cameras** — by state and type, mappable vs descriptor-only, type-filter chips already exist.
+  - **Fuel** — cheapest 10, most-expensive 10, fuel-type chips, by-brand averages.
+- Keyboard: `Esc` closes, arrow keys cycle through tiles.
+- Use the existing accent + glass tokens (`var(--bg-panel)`, `var(--blur)`, `var(--accent)`) so it matches the rest of the dashboard.
+
+**Scope:** ~1 day for the framework + 2–4 hours per tile to populate. Suggest building the framework with the weather tile first as the reference implementation, then porting the others.
+
+---
+
 ## Tidy-ups from the Atlas removal (2026-04-19)
 
 The Atlas proof-of-concept (`api/`, `ingesters/`, `frontend/`, `db/`, `nginx/`, `ops/`, Docker compose files, `sources.yaml`) was removed. Leftover housekeeping:
