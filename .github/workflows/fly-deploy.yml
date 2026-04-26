@@ -1,0 +1,27 @@
+name: Fly Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Cancel any in-flight deploy if a newer push comes in. Fly machines
+# are stateless and a single deploy at a time keeps the rollout linear.
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build + deploy to Fly.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
