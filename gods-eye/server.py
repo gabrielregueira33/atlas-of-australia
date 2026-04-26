@@ -523,6 +523,83 @@ async def proxy_traffic_incidents():
     return respond("traffic_incidents", data, cached=False, error=last_error)
 
 
+# ─── LIVE TRAFFIC CAMERAS (TfNSW Live Traffic Cameras API) ────
+# Camera locations + a per-camera snapshot URL that refreshes server-side
+# every ~15 seconds. The list itself only changes when cameras are added /
+# removed, so we cache for an hour. Snapshot URLs are returned to the
+# browser as-is — the front-end appends a cache-buster query so each
+# refresh hits a fresh image without round-tripping through this proxy.
+_CAMERAS_URL = "https://api.transport.nsw.gov.au/v1/live/cameras"
+
+@app.get("/proxy/traffic-cameras")
+async def proxy_traffic_cameras():
+    cache_key = "traffic_cameras"
+    cached = cache_get(cache_key, ttl=60 * 60)
+    if cached and cached["data"] is not None:
+        return respond("traffic_cameras", cached["data"], cached=True)
+
+    val = os.environ.get("NSW_TRAFFIC_API_KEY", "").strip()
+    if not val:
+        empty = {"type": "FeatureCollection", "features": []}
+        return respond(
+            "traffic_cameras", empty, cached=False,
+            error="NSW_TRAFFIC_API_KEY not set in .env (free signup at opendata.transport.nsw.gov.au)",
+        )
+
+    http = await client()
+    last_error: str | None = None
+    features: list[dict] = []
+    try:
+        hdrs = dict(_HEADERS)
+        hdrs["Authorization"] = f"apikey {val}"
+        r = await http.get(_CAMERAS_URL, headers=hdrs)
+        r.raise_for_status()
+        raw = r.json()
+        # The feed is a GeoJSON FeatureCollection. Each feature has a Point
+        # geometry and properties { title, region, direction, view, url, ... }.
+        if isinstance(raw, dict) and isinstance(raw.get("features"), list):
+            for it in raw["features"]:
+                if not isinstance(it, dict):
+                    continue
+                geom = it.get("geometry") or {}
+                if geom.get("type") != "Point":
+                    continue
+                coords = geom.get("coordinates") or []
+                if len(coords) != 2:
+                    continue
+                p = it.get("properties") or {}
+                # Slim to the fields the client uses; strip anything noisy.
+                title = str(p.get("title") or p.get("name") or "Camera")
+                region = str(p.get("region") or "")
+                direction = str(p.get("direction") or p.get("heading") or "")
+                view = str(p.get("view") or p.get("description") or "")
+                # TfNSW Live Traffic Cameras feed uses `href` for the snapshot
+                # image URL (per https://opendata.transport.nsw.gov.au/dataset/live-traffic-cameras).
+                # `url`/`imageUrl` kept as defensive fallbacks in case the schema shifts.
+                url = str(p.get("href") or p.get("url") or p.get("imageUrl") or "")
+                if not url:
+                    continue
+                features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": coords},
+                    "properties": {
+                        "id": str(p.get("id") or p.get("cameraId") or title),
+                        "title": title,
+                        "region": region,
+                        "direction": direction,
+                        "view": view,
+                        "url": url,
+                    },
+                })
+    except Exception as e:
+        last_error = f"tfnsw-cameras: {e}"
+        log.warning("traffic cameras fetch failed: %s", e)
+
+    data = {"type": "FeatureCollection", "features": features}
+    cache_set(cache_key, data, error=last_error)
+    return respond("traffic_cameras", data, cached=False, error=last_error)
+
+
 # ─── FLIGHTS (airplanes.live primary, OpenSky fallback) ──────
 # Background loop refreshes the adsb.one feed every ~1s in parallel across
 # all coverage points, so client polls always hit a warm cache instantly.
@@ -3289,4 +3366,7 @@ if __name__ == "__main__":
     print("|  Open http://localhost:8777 in your browser      |")
     print("|  API docs: http://localhost:8777/docs            |")
     print("+-------------------------------------------------+")
-    uvicorn.run(app, host="0.0.0.0", port=8777)
+    # PORT env var lets us run on any container host (Fly.io, Render, Railway,
+    # PythonAnywhere always-on tasks). Falls back to 8777 for local dev.
+    port = int(os.environ.get("PORT", "8777"))
+    uvicorn.run(app, host="0.0.0.0", port=port)

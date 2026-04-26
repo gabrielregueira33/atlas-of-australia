@@ -64,6 +64,24 @@
   --radius-sm: 8px;
   --shadow: 0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2);
   --shadow-lg: 0 12px 48px rgba(0,0,0,0.5), 0 4px 16px rgba(0,0,0,0.3);
+  /* Card-centric design tokens (Phase A) — used by canonical tile chrome,
+     popup action bars, and the modal accent treatment. Older one-off CSS
+     keeps its hard-coded values; new code below should reference these. */
+  --border-subtle: rgba(148,163,184,0.08);
+  --border-normal: rgba(148,163,184,0.15);
+  --border-strong: rgba(148,163,184,0.25);
+  --gap-xs: 4px;
+  --gap-sm: 8px;
+  --gap-md: 12px;
+  --gap-lg: 16px;
+  --fs-xs: 9px;
+  --fs-sm: 10px;
+  --fs-base: 12px;
+  --fs-md: 13px;
+  --fs-lg: 14px;
+  --shadow-card: 0 4px 14px rgba(0,0,0,0.35);
+  --shadow-card-hov: 0 8px 24px rgba(0,0,0,0.55);
+  --accent-bar: 3px solid var(--accent);
 }
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -151,8 +169,7 @@
 /* Hide-tiles mode — keeps the map and header visible, tucks away every
    data tile / layer panel / status bar so the map is unobstructed. */
 html[data-tiles="hidden"] #card-tray,
-html[data-tiles="hidden"] .tile[data-pinned="1"],
-html[data-tiles="hidden"] #layer-panel { display: none !important; }
+html[data-tiles="hidden"] .tile[data-pinned="1"] { display: none !important; }
 
 /* ── Rich POI popup (Google Places details) ──────────────────── */
 .poi-popup .maplibregl-popup-content {
@@ -227,6 +244,77 @@ html[data-tiles="hidden"] #layer-panel { display: none !important; }
   color: var(--dim);
 }
 .poi-btn-secondary:hover { background: rgba(148,163,184,0.12); color: var(--ink); }
+
+/* ── Live traffic camera popup ─────────────────────────────── */
+.cam-popup .maplibregl-popup-content {
+  padding: 0; max-width: 380px; border-radius: var(--radius-sm); overflow: hidden;
+}
+.cam-popup .popup-title { padding: 10px 12px 2px; font-size: 13px; }
+.cam-frame {
+  position: relative; margin: 6px 0; background: rgba(4,8,16,0.6);
+  min-height: 180px; display: flex; align-items: center; justify-content: center;
+}
+.cam-img {
+  width: 100%; height: auto; display: block;
+  background: rgba(148,163,184,0.08);
+  min-height: 180px;
+  cursor: zoom-in;
+  transition: filter 0.15s;
+}
+.cam-img:hover { filter: brightness(1.08); }
+
+/* ── Camera lightbox (click-to-enlarge) ─────────────────────── */
+#cam-lightbox {
+  position: fixed; inset: 0; z-index: 11000;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(4, 8, 16, 0.88); backdrop-filter: blur(6px);
+  padding: 24px;
+}
+#cam-lightbox.open { display: flex; }
+.cam-lightbox-inner {
+  position: relative; max-width: min(1400px, 96vw); max-height: 92vh;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.cam-lightbox-img {
+  max-width: 100%; max-height: 80vh;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  background: rgba(148,163,184,0.06);
+  cursor: zoom-out;
+}
+.cam-lightbox-meta {
+  display: flex; align-items: center; gap: 12px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--ink);
+  letter-spacing: 0.04em;
+}
+.cam-lightbox-title {
+  flex: 1 1 auto; font-weight: 600; font-size: 13px;
+  color: var(--ink); letter-spacing: 0.02em;
+}
+.cam-lightbox-sub { color: var(--dim); font-size: 10px; }
+.cam-lightbox-close {
+  background: rgba(148,163,184,0.1); border: 1px solid var(--border-strong);
+  color: var(--ink); width: 32px; height: 32px;
+  font-size: 18px; line-height: 1; cursor: pointer; border-radius: 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.cam-lightbox-close:hover { background: rgba(251,113,133,0.18); color: var(--rose); border-color: rgba(251,113,133,0.4); }
+.cam-pulse {
+  position: absolute; bottom: 6px; left: 8px;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px; border-radius: 3px;
+  background: rgba(4,8,16,0.7); color: var(--ink);
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em;
+  font-weight: 600; text-transform: uppercase;
+  border: 1px solid rgba(34,211,238,0.4);
+}
+.cam-pulse span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #22d3ee; box-shadow: 0 0 6px #22d3ee;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
 
 /* ── Incident popup (rich individual) ───────────────────────── */
 .incident-popup .maplibregl-popup-content {
@@ -885,6 +973,207 @@ html, body {
 .sparkline path { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 .sparkline .area { stroke: none; opacity: 0.15; }
 
+/* ═══════════════════════════════════════════════════════════════
+   CANONICAL TILE TEMPLATE (Phase B1)
+   Sub-rows + chips + footer. Used by group tiles (Hazards,
+   Traffic & Roads, Places, Analysis Tools, Weather, Flights, Fuel)
+   so toggle dots, chips, sliders and freshness all share one
+   visual language.
+   ═══════════════════════════════════════════════════════════════ */
+.tile { border: 1px solid var(--border-normal); box-shadow: var(--shadow-card); }
+.tile:hover { box-shadow: var(--shadow-card-hov); transform: translateY(-1px); }
+.tile-header { border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px; }
+
+/* Top-level summary line shown above the sub-rows. */
+.tile__summary {
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+  color: var(--dim); line-height: 1.45;
+  margin: 6px 0 2px;
+  font-feature-settings: 'tnum';
+}
+.tile__summary .accent { color: var(--accent); font-weight: 600; }
+.tile__summary .live   { color: var(--emerald); font-weight: 600; }
+
+/* Sub-row — one per layer/sub-feature inside a group tile. The dot is
+   the on/off toggle; the row is also clickable as a single hit-target. */
+.tile__row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 4px; cursor: pointer; user-select: none;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  transition: background 0.15s, opacity 0.15s;
+}
+.tile__row:first-of-type { border-top: none; padding-top: 6px; }
+.tile__row:hover { background: rgba(148,163,184,0.06); }
+.tile__row[aria-disabled="true"] { cursor: default; opacity: 0.4; }
+.tile__row[aria-disabled="true"]:hover { background: transparent; }
+
+.tile__dot {
+  flex: 0 0 auto;
+  width: 11px; height: 11px; border-radius: 50%;
+  border: 2px solid; box-sizing: border-box;
+  background: transparent; transition: background 0.18s, box-shadow 0.18s;
+  pointer-events: none;
+}
+.tile__row[data-on="1"] .tile__dot {
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.tile__row-label {
+  flex: 1 1 auto; min-width: 0;
+  font-size: var(--fs-base); font-weight: 500; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tile__row[aria-disabled="true"] .tile__row-label { color: var(--dim2); }
+.tile__row[data-on="0"] .tile__row-label { color: var(--dim); }
+
+.tile__row-count {
+  flex: 0 0 auto;
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+  color: var(--dim); font-feature-settings: 'tnum';
+  letter-spacing: 0.04em;
+}
+.tile__row-count.live   { color: var(--emerald); }
+.tile__row-count.warn   { color: var(--amber); }
+.tile__row-count.danger { color: var(--rose); }
+.tile__row-count.muted  { color: var(--dim2); }
+
+.tile__row-chevron {
+  flex: 0 0 14px; text-align: center;
+  font-size: 10px; color: var(--dim2);
+  transition: transform 0.18s, color 0.18s;
+}
+.tile__row[aria-expanded="true"] .tile__row-chevron {
+  transform: rotate(90deg); color: var(--dim);
+}
+
+/* Inline expanded body that appears beneath an active sub-row.
+   Only visible when its parent row has aria-expanded="true". */
+.tile__row-body {
+  display: none;
+  padding: 4px 4px 8px 22px;
+  font-size: var(--fs-sm); color: var(--dim);
+  line-height: 1.5;
+}
+.tile__row[aria-expanded="true"] + .tile__row-body { display: block; }
+.tile__row-body .viewshed-slider { margin-bottom: 6px; }
+.tile__row-body .viewshed-slider-row { font-size: 9px; margin-top: 6px; }
+
+/* Filter / category chips inside a row body. Click-to-toggle. */
+.tile__chips { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.tile__chip {
+  padding: 3px 8px;
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  letter-spacing: 0.06em; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border-normal); border-radius: 3px;
+  background: rgba(148,163,184,0.08); color: var(--dim);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.tile__chip:hover { background: rgba(148,163,184,0.16); color: var(--ink); }
+.tile__chip[data-on="1"] {
+  background: rgba(56,189,248,0.16); color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+/* Body status line (e.g. "Most recent: NSW · 12 min ago") */
+.tile__row-meta {
+  font-size: var(--fs-sm); color: var(--dim2);
+  margin-top: 4px; line-height: 1.4;
+}
+.tile__row-meta strong { color: var(--ink); font-weight: 600; }
+
+/* Tile footer — last updated + refresh icon. Right-aligned. */
+.tile__footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 10px; padding-top: 7px;
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  color: var(--dim2); letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.tile__footer-time { font-feature-settings: 'tnum'; }
+.tile__refresh {
+  background: transparent; border: 1px solid transparent;
+  padding: 2px 7px; line-height: 1;
+  color: var(--dim2); font-size: 13px; cursor: pointer;
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.tile__refresh:hover {
+  color: var(--accent); background: rgba(56,189,248,0.1);
+  border-color: var(--accent-dim);
+}
+.tile__refresh.spinning { animation: tile-spin 0.6s linear infinite; }
+@keyframes tile-spin { to { transform: rotate(360deg); } }
+
+/* Tile overflow + pin icons in the header. Only visible on hover so the
+   header doesn't feel cluttered. */
+.tile__icons {
+  display: flex; gap: 4px; align-items: center;
+  opacity: 0.5; transition: opacity 0.15s;
+}
+.tile-header:hover .tile__icons { opacity: 1; }
+.tile__icon-btn {
+  background: transparent; border: 0; padding: 2px 4px;
+  color: var(--dim2); cursor: pointer; line-height: 1;
+  font-size: 13px; font-family: var(--font-mono);
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s;
+}
+.tile__icon-btn:hover { color: var(--accent); background: rgba(56,189,248,0.1); }
+
+/* Mini "live" chip used in tile headers + section labels. */
+.tile__chip-live {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 6px; font-family: var(--font-mono); font-size: 8px;
+  letter-spacing: 0.1em; font-weight: 600; text-transform: uppercase;
+  background: rgba(52,211,153,0.14); color: var(--emerald);
+  border: 1px solid rgba(52,211,153,0.3); border-radius: 3px;
+}
+
+/* Tray category dividers — purely visual grouping inside the grid. */
+.tile-group__header {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 10px;
+  margin: 4px 0 -2px; padding: 4px 2px;
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  letter-spacing: 0.18em; font-weight: 600;
+  color: var(--dim); text-transform: uppercase;
+  user-select: none;
+}
+.tile-group__header::before {
+  content: ''; flex: 0 0 12px; height: 1px;
+  background: var(--border-normal);
+}
+.tile-group__header::after {
+  content: ''; flex: 1 1 auto; height: 1px;
+  background: var(--border-subtle);
+}
+.tile-group__count {
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  color: var(--dim2); font-weight: 500;
+  padding: 1px 7px; background: rgba(148,163,184,0.08);
+  border: 1px solid var(--border-subtle); border-radius: 3px;
+  letter-spacing: 0.06em;
+}
+
+/* Inline action button (Search town / Find cheapest / Track flight). */
+.tile__action {
+  margin-top: 8px; width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 7px 10px;
+  background: rgba(56,189,248,0.08);
+  border: 1px solid rgba(56,189,248,0.3);
+  border-radius: 4px;
+  color: var(--accent);
+  font-family: var(--font-ui); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  cursor: pointer; transition: background 0.15s, border-color 0.15s;
+}
+.tile__action:hover { background: rgba(56,189,248,0.16); border-color: var(--accent-dim); }
+
 /* ─── ENERGY MIX BAR ─────────────────────────────────── */
 .energy-bar {
   display: flex; height: 6px; border-radius: 3px; overflow: hidden;
@@ -892,36 +1181,104 @@ html, body {
 }
 .energy-bar div { height: 100%; transition: width 0.5s ease; }
 
-/* ─── LAYER PANEL ───────────────────────────────────── */
-#layer-panel {
-  position: fixed; bottom: 20px; left: 14px; z-index: 50;
-  width: 220px; padding: 14px 16px;
-  max-height: 420px; overflow-y: auto;
+/* (Layer panel CSS retired — its toggles now live inside domain tiles.) */
+
+/* ═══════════════════════════════════════════════════════════════
+   PHASE C — Popup / modal / route-panel polish
+   Shared action bar + skeleton loader + accent bars.
+   ═══════════════════════════════════════════════════════════════ */
+.popup-action-bar {
+  display: flex; gap: var(--gap-xs);
+  padding: 8px 12px 10px; margin-top: 4px;
+  border-top: 1px solid var(--border-subtle);
 }
-#layer-panel h3 {
-  font-size: 9px; font-weight: 600; letter-spacing: 2.5px;
-  color: var(--dim); margin-bottom: 12px;
+.popup-action-bar a, .popup-action-bar button {
+  flex: 1 1 auto; min-width: 28px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  background: rgba(148,163,184,0.06);
+  border: 1px solid var(--border-normal);
+  color: var(--dim);
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  letter-spacing: 0.06em; font-weight: 600;
+  text-decoration: none;
+  padding: 6px 8px; border-radius: 4px; cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.layer-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 0; cursor: pointer;
-  border-bottom: 1px solid rgba(255,255,255,0.03);
-  transition: opacity 0.2s;
+.popup-action-bar a:hover, .popup-action-bar button:hover {
+  background: rgba(56,189,248,0.14);
+  color: var(--accent);
+  border-color: var(--accent-dim);
 }
-.layer-item:last-child { border-bottom: none; }
-.layer-item:hover { opacity: 0.85; }
-.layer-item.disabled { opacity: 0.35; }
-.layer-toggle-dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  border: 2px solid; flex-shrink: 0;
-  transition: all 0.2s;
+.popup-action-bar svg { width: 12px; height: 12px; flex: 0 0 12px; }
+.popup-action-bar .copied-feedback {
+  background: rgba(52,211,153,0.16) !important;
+  color: var(--emerald) !important;
+  border-color: rgba(52,211,153,0.4) !important;
 }
-.layer-toggle-dot.active { box-shadow: 0 0 6px; }
-.layer-item-label { font-size: 11.5px; font-weight: 500; color: var(--ink); }
-.layer-item-count {
-  margin-left: auto; font-family: var(--font-mono); font-size: 10px;
-  color: var(--dim); font-feature-settings: 'tnum';
+
+/* Skeleton loader — shimmer placeholder during async detail fetches. */
+.popup-skel {
+  padding: 8px 12px;
 }
+.popup-skel-line {
+  height: 9px; margin: 6px 0;
+  background: linear-gradient(90deg,
+    rgba(148,163,184,0.06) 0%,
+    rgba(148,163,184,0.18) 50%,
+    rgba(148,163,184,0.06) 100%);
+  background-size: 200% 100%;
+  border-radius: 3px;
+  animation: popup-skel-shimmer 1.4s ease-in-out infinite;
+}
+.popup-skel-line.short { width: 60%; }
+.popup-skel-line.med   { width: 85%; }
+@keyframes popup-skel-shimmer {
+  0%, 100% { background-position: 200% 0; }
+  50%      { background-position: -200% 0; }
+}
+
+/* Left accent bar for detail modals + route panel — gives them a clear
+   identity hook and a subtle "live" feel. */
+.flight-detail-inner { border-left: var(--accent-bar); }
+#route-panel { border-left: var(--accent-bar); }
+
+/* Route-panel polish — coloured traffic cell + arrival time. */
+#route-panel .traffic-amber { color: var(--amber) !important; }
+#route-panel .traffic-rose  { color: var(--rose)  !important; }
+#route-arrival {
+  font-size: 10px; color: var(--dim2);
+  letter-spacing: 0.04em; margin-top: 2px;
+}
+#route-copy-btn {
+  background: transparent; border: 1px solid var(--border-normal);
+  color: var(--dim); padding: 3px 8px; margin-left: 4px;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em;
+  border-radius: 3px; cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+#route-copy-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+
+/* Search dropdown keyboard highlight. */
+.search-item.is-active {
+  background: rgba(56,189,248,0.14);
+  border-left: 2px solid var(--accent);
+}
+
+/* Tile-tray filter input. */
+.tile-filter {
+  margin-left: 10px;
+  height: 22px; padding: 0 8px;
+  background: rgba(148,163,184,0.06);
+  border: 1px solid var(--border-normal); border-radius: 3px;
+  color: var(--ink); font-family: var(--font-mono); font-size: 10px;
+  outline: none; width: 110px; min-width: 0;
+  transition: border-color 0.15s, background 0.15s, width 0.15s;
+}
+.tile-filter:focus { width: 160px; }
+@media (max-width: 720px) { .tile-filter { display: none; } }
+.tile-filter::placeholder { color: var(--dim2); }
+.tile-filter:focus { border-color: var(--accent); background: rgba(56,189,248,0.08); }
+.tile.is-filtered-out { display: none !important; }
 
 /* ─── BOTTOM STATUS BAR ─────────────────────────────── */
 #bottombar {
@@ -1041,7 +1398,7 @@ html, body {
 <div id="map-settings-panel" class="glass" role="dialog" aria-labelledby="map-settings-title"
      style="position:fixed;top:66px;right:20px;z-index:200;padding:14px 16px;border-radius:var(--radius);width:250px;display:none;font-family:var(--font-mono);box-shadow:var(--shadow-lg);border:1px solid var(--border-glass-hover)">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-    <div id="map-settings-title" style="font-size:10px;letter-spacing:0.12em;color:var(--dim);text-transform:uppercase;font-weight:600">Map settings</div>
+    <div id="map-settings-title" style="font-size:10px;letter-spacing:0.12em;color:var(--dim);text-transform:uppercase;font-weight:600">Map style</div>
     <button id="map-settings-close" aria-label="Close map settings"
             style="background:transparent;border:0;color:var(--dim);font-size:18px;cursor:pointer;line-height:1;padding:0 4px">×</button>
   </div>
@@ -1074,25 +1431,17 @@ html, body {
     </div>
   </div>
   <div class="settings-section">
-    <div class="settings-label">DATA TILES</div>
+    <div class="settings-label">DASHBOARD</div>
     <div class="settings-row">
-      <button class="settings-opt" data-tiles="shown">SHOWN</button>
-      <button class="settings-opt" data-tiles="hidden">HIDDEN</button>
+      <button class="settings-opt" data-tiles="shown">CARDS ON</button>
+      <button class="settings-opt" data-tiles="hidden">FULL MAP</button>
     </div>
   </div>
-  <div class="settings-section">
-    <div class="settings-label">OVERLAYS</div>
-    <button class="settings-toggle" data-overlay="traffic-flow">
-      <span>Traffic flow</span><span class="toggle-state">OFF</span>
-    </button>
-    <button class="settings-toggle" data-overlay="places-poi">
-      <span>Places (POI)</span><span class="toggle-state">OFF</span>
-    </button>
-    <button class="settings-toggle" data-overlay="traffic-incidents">
-      <span>Incidents</span><span class="toggle-state">OFF</span>
-    </button>
+  <div class="settings-section" style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border-subtle)">
+    <button id="map-settings-reset" type="button"
+            style="width:100%;padding:8px 10px;background:transparent;border:1px solid rgba(251,113,133,0.3);color:var(--rose);font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;font-weight:600;border-radius:4px;cursor:pointer;transition:background 0.15s,border-color 0.15s">RESET TO DEFAULTS</button>
   </div>
-  <div style="font-size:9px;color:var(--dim2);margin-top:8px;letter-spacing:0.04em;line-height:1.4">Changes save automatically &amp; persist on reload.</div>
+  <div style="font-size:9px;color:var(--dim2);margin-top:8px;letter-spacing:0.04em;line-height:1.4">Layer toggles now live in their domain cards. Changes save automatically.</div>
 </div>
 
 <!-- ROUTE SUMMARY PANEL — appears when a directions route is active -->
@@ -1124,6 +1473,9 @@ html, body {
     <div class="card-tray-handle-bar"></div>
     <span class="card-tray-label">CARDS</span>
     <span class="card-tray-count" id="card-tray-count">0 / 0</span>
+    <input type="text" class="tile-filter" id="tile-filter-input"
+           placeholder="Filter cards…" autocomplete="off"
+           aria-label="Filter dashboard cards by name" />
     <div class="card-tray-controls">
       <div class="card-tray-layouts-wrap">
         <button type="button" class="card-tray-btn" id="card-tray-layouts-btn"
@@ -1148,8 +1500,299 @@ html, body {
   </div>
   <div class="card-tray-scroll" id="card-tray-scroll">
     <div class="card-tray-grid" id="card-tray-grid">
+      <!-- ═══ DATA & MAPS — overlay control tiles ═══════════════════ -->
+      <div class="tile-group__header" data-group="data">
+        DATA &amp; MAPS
+        <span class="tile-group__count" id="tg-data-count">7</span>
+      </div>
+
+      <!-- WEATHER TILE ─────────────────────────────────────────── -->
+      <div class="tile glass" id="tile-weather" data-card-id="weather" data-tray-index="0" data-group-key="data">
+        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
+        <div class="tile-header">
+          <span class="tile-title">WEATHER</span>
+          <div class="tile__icons">
+            <span class="tile-badge" id="weather-badge" style="background:rgba(56,189,248,0.15);color:var(--accent)">—</span>
+          </div>
+        </div>
+        <div class="tile__summary" id="wx-subtitle">Live observations · Open-Meteo</div>
+        <div class="tile__row wx-layer-btn" data-layer-id="weather" data-layer="stations" data-on="1" role="button" tabindex="0" aria-pressed="true">
+          <span class="tile__dot" style="color:#38bdf8"></span>
+          <span class="tile__row-label">Weather stations</span>
+          <span class="tile__row-count" id="wx-count">—</span>
+        </div>
+        <div class="tile__row wx-layer-btn" data-layer-id="wx-radar" data-layer="radar" data-on="0" role="button" tabindex="0" aria-pressed="false" title="Rain radar (RainViewer)">
+          <span class="tile__dot" style="color:#38bdf8"></span>
+          <span class="tile__row-label">Rain radar</span>
+          <span class="tile__row-count" id="wx-radar-time"></span>
+        </div>
+        <div class="tile__row wx-layer-btn" data-layer-id="wx-heatmap" data-layer="heatmap" data-on="0" role="button" tabindex="0" aria-pressed="false" title="Temperature heatmap from stations">
+          <span class="tile__dot" style="color:#fb7185"></span>
+          <span class="tile__row-label">Temperature heatmap</span>
+          <span class="tile__row-count" id="wx-hot" style="color:var(--rose)">—</span>
+        </div>
+        <div class="tile__row wx-layer-btn" data-layer-id="wx-wind" data-layer="wind" data-on="0" role="button" tabindex="0" aria-pressed="false" title="Wind arrows from stations">
+          <span class="tile__dot" style="color:#34d399"></span>
+          <span class="tile__row-label">Wind arrows</span>
+          <span class="tile__row-count" id="wx-cold" style="color:var(--accent)">—</span>
+        </div>
+        <button id="wx-radar-play" style="display:none;background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.35);color:var(--accent);font-family:var(--font-mono);font-size:9px;padding:3px 8px;border-radius:3px;cursor:pointer;letter-spacing:0.04em;margin-top:8px;width:100%">▶ LOOP RADAR</button>
+        <button id="wx-search-btn" class="tile__action">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+          </svg>
+          Search town
+        </button>
+        <div class="tile__footer">
+          <span class="tile__footer-time" data-tile-updated="weather">—</span>
+          <button class="tile__refresh" data-tile-refresh="weather" title="Refresh weather now">&#8635;</button>
+        </div>
+        <span hidden id="wx-rain"></span>
+      </div>
+
+      <!-- FLIGHTS TILE ─────────────────────────────────────────── -->
+      <div class="tile glass" id="tile-flights" data-card-id="flights" data-tray-index="1" data-group-key="data">
+        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
+        <div class="tile-header">
+          <span class="tile-title">FLIGHT MOVEMENTS</span>
+          <span class="tile-badge live">LIVE</span>
+        </div>
+        <div class="tile__summary"><span class="accent" id="flight-count">—</span> aircraft · avg <span id="flight-avg-alt">—</span> · <span id="flight-avg-spd">—</span></div>
+        <div class="tile__row" data-layer-id="flights" data-on="1" role="button" tabindex="0" aria-pressed="true">
+          <span class="tile__dot" style="color:#34d399"></span>
+          <span class="tile__row-label">Aircraft markers</span>
+          <span class="tile__row-count live" id="flight-sub">—</span>
+        </div>
+        <div class="tile__row" data-layer-id="flight-trails" data-on="1" role="button" tabindex="0" aria-pressed="true">
+          <span class="tile__dot" style="color:#34d399"></span>
+          <span class="tile__row-label">Flight trails</span>
+          <span class="tile__row-count muted">on</span>
+        </div>
+        <button id="flight-search-btn" class="tile__action">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+          </svg>
+          Track flight
+        </button>
+        <div class="tile__footer">
+          <span class="tile__footer-time" data-tile-updated="flights">—</span>
+          <button class="tile__refresh" data-tile-refresh="flights" title="Refresh flights now">&#8635;</button>
+        </div>
+      </div>
+
+      <!-- HAZARDS TILE (group: Fires + Earthquakes) ─────────────── -->
+      <div class="tile glass" id="tile-hazards" data-card-id="hazards" data-tray-index="2" data-group-key="data">
+        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
+        <div class="tile-header">
+          <span class="tile-title">HAZARDS</span>
+          <span class="tile-badge live">LIVE</span>
+        </div>
+        <div class="tile__summary" id="hazards-summary">Active fires &amp; recent quakes</div>
+        <div class="tile__row" data-layer-id="fires" data-on="1" role="button" tabindex="0" aria-pressed="true" aria-expanded="false">
+          <span class="tile__dot" style="color:#fb7185"></span>
+          <span class="tile__row-label">Fires &amp; emergencies</span>
+          <span class="tile__row-count danger" id="fires-count">—</span>
+          <span class="tile__row-chevron" data-row-chevron>▸</span>
+        </div>
+        <div class="tile__row-body" id="fires-body">
+          <div class="tile__row-meta" id="fires-meta">No active fires.</div>
+          <div class="tile__chips" id="fires-state-chips"></div>
+        </div>
+        <div class="tile__row" data-layer-id="earthquakes" data-on="1" role="button" tabindex="0" aria-pressed="true" aria-expanded="false">
+          <span class="tile__dot" style="color:#fbbf24"></span>
+          <span class="tile__row-label">Earthquakes (90d)</span>
+          <span class="tile__row-count warn" id="quakes-count">—</span>
+          <span class="tile__row-chevron" data-row-chevron>▸</span>
+        </div>
+        <div class="tile__row-body" id="quakes-body">
+          <div class="tile__row-meta" id="quakes-meta">Loading…</div>
+          <div id="quakes-spark" style="margin-top:6px"></div>
+        </div>
+        <div class="tile__footer">
+          <span class="tile__footer-time" data-tile-updated="hazards">—</span>
+          <button class="tile__refresh" data-tile-refresh="hazards" title="Refresh hazards now">&#8635;</button>
+        </div>
+      </div>
+
+      <!-- TRAFFIC & ROADS TILE (group) ──────────────────────────── -->
+      <div class="tile glass" id="tile-traffic" data-card-id="traffic" data-tray-index="3" data-group-key="data">
+        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
+        <div class="tile-header">
+          <span class="tile-title">TRAFFIC &amp; ROADS</span>
+          <span class="tile-badge" style="background:rgba(251,113,133,0.15);color:var(--rose)">NSW</span>
+        </div>
+        <div class="tile__summary" id="traffic-summary">Live road conditions</div>
+        <div class="tile__row" data-layer-id="traffic-flow" data-on="0" role="button" tabindex="0" aria-pressed="false">
+          <span class="tile__dot" style="color:#fbbf24"></span>
+          <span class="tile__row-label">Traffic flow (TomTom)</span>
+          <span class="tile__row-count" id="traffic-flow-count">off</span>
+        </div>
+        <div class="tile__row" data-layer-id="traffic-incidents" data-on="0" role="button" tabindex="0" aria-pressed="false" aria-expanded="false">
+          <span class="tile__dot" style="color:#fb7185"></span>
+          <span class="tile__row-label">Incidents (NSW)</span>
+          <span class="tile__row-count" id="incidents-count">off</span>
+          <span class="tile__row-chevron" data-row-chevron>▸</span>
+        </div>
+        <div class="tile__row-body" id="incidents-body">
+          <div class="tile__row-meta" id="incidents-meta">Toggle on to fetch.</div>
+        </div>
+        <div class="tile__row" data-layer-id="speedcams" data-on="0" role="button" tabindex="0" aria-pressed="false" aria-expanded="false">
+          <span class="tile__dot" style="color:#f472b6"></span>
+          <span class="tile__row-label">Speed cameras</span>
+          <span class="tile__row-count" id="speedcams-count">—</span>
+          <span class="tile__row-chevron" data-row-chevron>▸</span>
+        </div>
+        <div class="tile__row-body" id="speedcams-body">
+          <div class="tile__chips" id="speedcams-type-chips">
+            <span class="tile__chip" data-cam-type="fixed"      data-on="1">Fixed</span>
+            <span class="tile__chip" data-cam-type="red-light"  data-on="1">Red-light</span>
+            <span class="tile__chip" data-cam-type="mobile"     data-on="1">Mobile</span>
+          </div>
+        </div>
+        <div class="tile__row" data-layer-id="cameras" data-on="0" role="button" tabindex="0" aria-pressed="false">
+          <span class="tile__dot" style="color:#22d3ee"></span>
+          <span class="tile__row-label">Live cameras (NSW)</span>
+          <span class="tile__row-count" id="cameras-count">off</span>
+        </div>
+        <div class="tile__footer">
+          <span class="tile__footer-time" data-tile-updated="traffic">—</span>
+          <button class="tile__refresh" data-tile-refresh="traffic" title="Refresh traffic now">&#8635;</button>
+        </div>
+      </div>
+
+      <!-- PLACES TILE (group: Cities + Google POI) ──────────────── -->
+      <div class="tile glass" id="tile-places" data-card-id="places" data-tray-index="4" data-group-key="data">
+        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
+        <div class="tile-header">
+          <span class="tile-title">PLACES</span>
+          <span class="tile-badge" style="background:rgba(167,139,250,0.15);color:var(--purple)">REF</span>
+        </div>
+        <div class="tile__summary" id="places-summary">Cities &amp; nearby points of interest</div>
+        <div class="tile__row" data-layer-id="cities" data-on="1" role="button" tabindex="0" aria-pressed="true">
+          <span class="tile__dot" style="color:#a78bfa"></span>
+          <span class="tile__row-label">Major cities</span>
+          <span class="tile__row-count" id="cities-count">—</span>
+        </div>
+        <div class="tile__row" data-layer-id="places-poi" data-on="0" role="button" tabindex="0" aria-pressed="false" aria-expanded="false">
+          <span class="tile__dot" style="color:#fbbf24"></span>
+          <span class="tile__row-label">Google POI</span>
+          <span class="tile__row-count" id="poi-count">off</span>
+          <span class="tile__row-chevron" data-row-chevron>▸</span>
+        </div>
+        <div class="tile__row-body" id="poi-body">
+          <div class="tile__row-meta" style="margin-bottom:4px">Categories — visible at zoom 12+</div>
+          <div class="tile__chips" id="poi-cat-chips">
+            <span class="tile__chip" data-poi-cat="restaurant" data-on="1">Restaurants</span>
+            <span class="tile__chip" data-poi-cat="cafe"       data-on="1">Cafés</span>
+            <span class="tile__chip" data-poi-cat="bar"        data-on="0">Bars</span>
+            <span class="tile__chip" data-poi-cat="lodging"    data-on="0">Hotels</span>
+            <span class="tile__chip" data-poi-cat="store"      data-on="0">Shops</span>
+            <span class="tile__chip" data-poi-cat="gas_station" data-on="0">Petrol</span>
+          </div>
+        </div>
+        <div class="tile__footer">
+          <span class="tile__footer-time" data-tile-updated="places">—</span>
+        </div>
+      </div>
+
+      <!-- FUEL TILE ────────────────────────────────────────────── -->
+      <div class="tile glass" id="tile-fuel" data-card-id="fuel" data-tray-index="5" data-group-key="data">
+        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
+        <div class="tile-header">
+          <span class="tile-title">FUEL PRICES</span>
+          <span class="tile-badge" id="fuel-badge" style="background:var(--amber-dim);color:var(--amber)">NSW + WA</span>
+        </div>
+        <div class="tile__summary" id="fuel-subtitle">NSW FuelCheck + FuelWatch WA</div>
+        <div class="tile-row"><span class="tile-row-label">ULP 91</span><span class="tile-row-value" id="fuel-ulp" style="color:var(--rose)">—</span></div>
+        <div class="tile-row"><span class="tile-row-label">Diesel</span><span class="tile-row-value" id="fuel-diesel" style="color:var(--amber)">—</span></div>
+        <div class="tile-row"><span class="tile-row-label">E10</span><span class="tile-row-value" id="fuel-e10" style="color:var(--emerald)">—</span></div>
+        <div class="tile__row" id="fuel-map-toggle" data-layer-id="fuel" data-on="0" role="button" tabindex="0" aria-pressed="false">
+          <span class="tile__dot" style="color:#34d399"></span>
+          <span class="tile__row-label">Stations on map</span>
+          <span class="tile__row-count" id="fuel-map-count">off</span>
+        </div>
+        <button id="fuel-search-btn" class="tile__action">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+          </svg>
+          Find cheapest
+        </button>
+        <div class="tile__footer">
+          <span class="tile__footer-time" data-tile-updated="fuel">—</span>
+          <button class="tile__refresh" data-tile-refresh="fuel" title="Refresh fuel prices">&#8635;</button>
+        </div>
+        <!-- legacy IDs kept for fuel-map-toggle script compatibility -->
+        <span hidden id="fuel-map-toggle-dot"></span>
+        <span hidden id="fuel-map-toggle-label">MAP</span>
+      </div>
+
+      <!-- ANALYSIS TOOLS TILE (group: Viewshed + Flood) ─────────── -->
+      <div class="tile glass" id="tile-analysis" data-card-id="analysis" data-tray-index="6" data-group-key="data">
+        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
+        <div class="tile-header">
+          <span class="tile-title">ANALYSIS TOOLS</span>
+          <span class="tile-badge closed" id="analysis-badge">IDLE</span>
+        </div>
+        <div class="tile__summary">Click the dot to enable, then click a point on the map.</div>
+        <div class="tile__row" data-layer-id="viewshed" data-on="0" role="button" tabindex="0" aria-pressed="false" aria-expanded="false">
+          <span class="tile__dot" style="color:#34d399"></span>
+          <span class="tile__row-label">Viewshed</span>
+          <span class="tile__row-count" id="viewshed-tile-pct">—</span>
+          <span class="tile__row-chevron" data-row-chevron>▸</span>
+        </div>
+        <div class="tile__row-body" id="viewshed-controls">
+          <div class="tile__row-meta" id="viewshed-status" style="min-height:14px">Line-of-sight analysis</div>
+          <div class="viewshed-slider-row" style="margin-top:8px">
+            <span>Observer height</span><span class="viewshed-slider-val" id="viewshed-obs-val">1.7m</span>
+          </div>
+          <input id="viewshed-obs-slider" class="viewshed-slider" type="range" min="1.7" max="50" step="0.5" value="1.7">
+          <div class="viewshed-slider-row">
+            <span>Radius</span><span class="viewshed-slider-val" id="viewshed-radius-val">2.0km</span>
+          </div>
+          <input id="viewshed-radius-slider" class="viewshed-slider" type="range" min="0.5" max="10" step="0.5" value="2">
+          <div class="viewshed-slider-row">
+            <span>Overlay opacity</span><span class="viewshed-slider-val" id="viewshed-opacity-val">90%</span>
+          </div>
+          <input id="viewshed-opacity-slider" class="viewshed-slider" type="range" min="10" max="100" step="5" value="90">
+          <button class="viewshed-clear-btn" id="viewshed-clear-btn">CLEAR</button>
+        </div>
+        <div class="tile__row" data-layer-id="flood" data-on="0" role="button" tabindex="0" aria-pressed="false" aria-expanded="false">
+          <span class="tile__dot" style="color:#38bdf8"></span>
+          <span class="tile__row-label">Flood simulator</span>
+          <span class="tile__row-count" id="flood-tile-area">—</span>
+          <span class="tile__row-chevron" data-row-chevron>▸</span>
+        </div>
+        <div class="tile__row-body" id="flood-controls">
+          <div class="tile__row-meta" id="flood-status" style="min-height:14px">Inundation simulation</div>
+          <div class="viewshed-slider-row" style="margin-top:8px">
+            <span>Water level rise</span><span class="viewshed-slider-val" id="flood-level-val">2.0m</span>
+          </div>
+          <input id="flood-level-slider" class="viewshed-slider" type="range" min="0" max="10" step="0.5" value="2">
+          <div class="viewshed-slider-row">
+            <span>Radius</span><span class="viewshed-slider-val" id="flood-radius-val">5.0km</span>
+          </div>
+          <input id="flood-radius-slider" class="viewshed-slider" type="range" min="1" max="10" step="0.5" value="5">
+          <div class="viewshed-slider-row">
+            <span>Overlay opacity</span><span class="viewshed-slider-val" id="flood-opacity-val">85%</span>
+          </div>
+          <input id="flood-opacity-slider" class="viewshed-slider" type="range" min="10" max="100" step="5" value="85">
+          <button class="viewshed-clear-btn" id="flood-clear-btn">CLEAR</button>
+        </div>
+        <!-- legacy IDs kept so toggleViewshed/toggleFlood badge updates don't error -->
+        <span hidden id="viewshed-tile-badge"></span>
+        <span hidden id="viewshed-tile-toggle"></span>
+        <span hidden id="flood-tile-badge"></span>
+        <span hidden id="flood-tile-toggle"></span>
+      </div>
+
+      <!-- ═══ MARKETS & INDEX — finance / index tiles ═══════════════ -->
+      <div class="tile-group__header" data-group="markets">
+        MARKETS &amp; INDEX
+        <span class="tile-group__count">7</span>
+      </div>
+
       <!-- ASX 200 -->
-      <div class="tile glass" id="tile-asx" data-card-id="asx" data-tray-index="0">
+      <div class="tile glass" id="tile-asx" data-card-id="asx" data-tray-index="7" data-group-key="markets">
         <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
         <div class="tile-header">
           <span class="tile-title">ASX 200</span>
@@ -1160,7 +1803,7 @@ html, body {
         <div class="sparkline" id="asx-spark"></div>
       </div>
       <!-- AUD/USD -->
-      <div class="tile glass" id="tile-aud" data-card-id="aud" data-tray-index="1">
+      <div class="tile glass" id="tile-aud" data-card-id="aud" data-tray-index="1" data-group-key="markets">
         <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
         <div class="tile-header">
           <span class="tile-title">AUD / USD</span>
@@ -1173,7 +1816,7 @@ html, body {
         <div class="tile-row"><span class="tile-row-label">JPY</span><span class="tile-row-value" id="aud-jpy">95.42</span></div>
       </div>
       <!-- RBA Cash Rate -->
-      <div class="tile glass" id="tile-rba" data-card-id="rba" data-tray-index="2">
+      <div class="tile glass" id="tile-rba" data-card-id="rba" data-tray-index="2" data-group-key="markets">
         <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
     <div class="tile-header">
       <span class="tile-title">RBA CASH RATE</span>
@@ -1186,7 +1829,7 @@ html, body {
     <div class="tile-row"><span class="tile-row-label">GDP Growth</span><span class="tile-row-value" style="color:var(--emerald)">1.5%</span></div>
   </div>
       <!-- Population -->
-      <div class="tile glass" id="tile-pop" data-card-id="pop" data-tray-index="3">
+      <div class="tile glass" id="tile-pop" data-card-id="pop" data-tray-index="3" data-group-key="markets">
         <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
         <div class="tile-header">
           <span class="tile-title">POPULATION</span>
@@ -1197,7 +1840,7 @@ html, body {
         <div class="tile-row"><span class="tile-row-label">Growth</span><span class="tile-row-value" style="color:var(--emerald)">+2.1% p.a.</span></div>
       </div>
       <!-- NEM Energy -->
-      <div class="tile glass" id="tile-nem" data-card-id="nem" data-tray-index="4">
+      <div class="tile glass" id="tile-nem" data-card-id="nem" data-tray-index="4" data-group-key="markets">
         <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
         <div class="tile-header">
           <span class="tile-title">NEM ENERGY MIX</span>
@@ -1218,7 +1861,7 @@ html, body {
     </div>
   </div>
       <!-- AEMO Demand -->
-      <div class="tile glass" id="tile-demand" data-card-id="demand" data-tray-index="5">
+      <div class="tile glass" id="tile-demand" data-card-id="demand" data-tray-index="5" data-group-key="markets">
         <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
         <div class="tile-header">
           <span class="tile-title">GRID DEMAND</span>
@@ -1233,7 +1876,7 @@ html, body {
         <div class="tile-row"><span class="tile-row-label">Max (24h)</span><span class="tile-row-value">34,112 MW</span></div>
       </div>
       <!-- Parliament -->
-      <div class="tile glass" id="tile-parl" data-card-id="parl" data-tray-index="6">
+      <div class="tile glass" id="tile-parl" data-card-id="parl" data-tray-index="6" data-group-key="markets">
         <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
         <div class="tile-header">
           <span class="tile-title">PARLIAMENT</span>
@@ -1243,145 +1886,6 @@ html, body {
         <div class="tile-row"><span class="tile-row-label">House</span><span class="tile-row-value" style="color:var(--emerald)">&#9679; Sitting</span></div>
         <div class="tile-subtitle" style="margin-top:6px">48th Parliament · 2nd Session</div>
       </div>
-      <!-- Fuel Prices -->
-      <div class="tile glass" id="tile-fuel" data-card-id="fuel" data-tray-index="7">
-        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
-        <div class="tile-header">
-          <span class="tile-title">FUEL PRICES</span>
-          <span class="tile-badge" id="fuel-badge" style="background:var(--amber-dim);color:var(--amber)">NSW + WA</span>
-        </div>
-    <div class="tile-row"><span class="tile-row-label">ULP 91</span><span class="tile-row-value" id="fuel-ulp" style="color:var(--rose)">—</span></div>
-    <div class="tile-row"><span class="tile-row-label">Diesel</span><span class="tile-row-value" id="fuel-diesel" style="color:var(--amber)">—</span></div>
-    <div class="tile-row"><span class="tile-row-label">E10</span><span class="tile-row-value" id="fuel-e10" style="color:var(--emerald)">—</span></div>
-    <div class="tile-subtitle" id="fuel-subtitle">NSW FuelCheck + FuelWatch WA</div>
-    <div style="display:flex;gap:6px;margin-top:8px;width:100%">
-      <button id="fuel-search-btn" class="flight-search-btn" style="flex:1 1 auto;width:auto;margin-top:0;min-width:0">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
-        </svg>
-        Find cheapest
-      </button>
-      <button id="fuel-map-toggle" aria-pressed="false" title="Toggle all fuel stations on the map"
-              style="flex:0 0 auto;width:64px;height:28px;margin-top:0;padding:0;display:flex;align-items:center;justify-content:center;gap:5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:var(--dim);font-family:var(--font-sans);font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;transition:all .15s">
-        <span id="fuel-map-toggle-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--dim2);transition:background .2s,box-shadow .2s"></span>
-        <span id="fuel-map-toggle-label">MAP</span>
-      </button>
-    </div>
-  </div>
-
-      <!-- WEATHER TILE ─────────────────────────────────────────── -->
-      <div class="tile glass" id="tile-weather" data-card-id="weather" data-tray-index="8">
-        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
-        <div class="tile-header">
-          <span class="tile-title">WEATHER</span>
-          <span class="tile-badge" id="weather-badge" style="background:rgba(56,189,248,0.15);color:var(--sky)">—</span>
-        </div>
-        <div class="tile-row"><span class="tile-row-label">Hottest</span><span class="tile-row-value" id="wx-hot" style="color:var(--rose)">—</span></div>
-        <div class="tile-row"><span class="tile-row-label">Coldest</span><span class="tile-row-value" id="wx-cold" style="color:var(--sky)">—</span></div>
-        <div class="tile-row"><span class="tile-row-label">Raining</span><span class="tile-row-value" id="wx-rain" style="color:var(--sky)">—</span></div>
-        <div class="tile-subtitle" id="wx-subtitle">— towns · Open-Meteo</div>
-        <div class="tile-subtitle" style="display:flex;justify-content:space-between;align-items:center;opacity:0.8;font-size:9px;min-height:14px"><button id="wx-radar-play" style="display:none;background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.35);color:var(--sky);font-family:var(--font-mono);font-size:9px;padding:1px 6px;border-radius:3px;cursor:pointer;letter-spacing:0.04em">▶ LOOP</button><span id="wx-radar-time" style="font-family:var(--font-mono)"></span></div>
-
-        <!-- Overlay toggles -->
-        <div style="display:flex;gap:4px;margin-top:8px;width:100%">
-          <button class="wx-layer-btn" data-layer="radar" aria-pressed="false" title="Rain radar (RainViewer)"
-                  style="flex:1;height:28px;padding:0 6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:var(--dim);font-family:var(--font-sans);font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px">
-            <span class="wx-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--dim2);transition:all .2s"></span>RADAR
-          </button>
-          <button class="wx-layer-btn" data-layer="heatmap" aria-pressed="false" title="Temperature heatmap (from stations)"
-                  style="flex:1;height:28px;padding:0 6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:var(--dim);font-family:var(--font-sans);font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px">
-            <span class="wx-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--dim2);transition:all .2s"></span>HEAT
-          </button>
-          <button class="wx-layer-btn" data-layer="wind" aria-pressed="false" title="Wind arrows (from stations)"
-                  style="flex:1;height:28px;padding:0 6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:var(--dim);font-family:var(--font-sans);font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:4px">
-            <span class="wx-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--dim2);transition:all .2s"></span>WIND
-          </button>
-        </div>
-        <button id="wx-search-btn" class="flight-search-btn" style="margin-top:6px">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
-          </svg>
-          Search town
-        </button>
-      </div>
-
-      <!-- FLIGHT TRACKING TILE ─────────────────────────────────── -->
-      <div class="tile glass" id="tile-flights" data-card-id="flights" data-tray-index="9">
-        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
-        <div class="tile-header">
-          <span class="tile-title">FLIGHT MOVEMENTS</span>
-          <span class="tile-badge live">LIVE</span>
-        </div>
-        <div class="tile-value emerald" id="flight-count">—</div>
-        <div class="tile-subtitle" id="flight-sub">aircraft tracked</div>
-        <div class="tile-row"><span class="tile-row-label">Avg altitude</span><span class="tile-row-value" id="flight-avg-alt">—</span></div>
-        <div class="tile-row"><span class="tile-row-label">Avg speed</span><span class="tile-row-value" id="flight-avg-spd">—</span></div>
-        <button id="flight-search-btn" class="flight-search-btn">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
-          </svg>
-          Search flight
-        </button>
-      </div>
-
-      <!-- FLOOD INUNDATION TILE ───────────────────────────────────── -->
-      <div class="tile glass" id="tile-flood" data-card-id="flood" data-tray-index="11">
-        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
-        <div class="tile-header">
-          <span class="tile-title">FLOOD SIM</span>
-          <span class="tile-badge closed" id="flood-tile-badge">OFF</span>
-        </div>
-        <div class="tile-value" id="flood-tile-area" style="color:var(--dim2)">—</div>
-        <div class="tile-subtitle" id="flood-status">Inundation simulation</div>
-        <button id="flood-tile-toggle" class="flight-search-btn" style="margin-top:8px;width:100%;justify-content:center;gap:0">
-          ENABLE
-        </button>
-        <div id="flood-controls" style="display:none;margin-top:4px">
-          <div class="viewshed-slider-row" style="margin-top:8px">
-            <span>Water level rise</span><span class="viewshed-slider-val" id="flood-level-val">2.0m</span>
-          </div>
-          <input id="flood-level-slider" class="viewshed-slider" type="range" min="0" max="10" step="0.5" value="2">
-          <div class="viewshed-slider-row">
-            <span>Radius</span><span class="viewshed-slider-val" id="flood-radius-val">5.0km</span>
-          </div>
-          <input id="flood-radius-slider" class="viewshed-slider" type="range" min="1" max="10" step="0.5" value="5">
-          <div class="viewshed-slider-row">
-            <span>Overlay opacity</span><span class="viewshed-slider-val" id="flood-opacity-val">85%</span>
-          </div>
-          <input id="flood-opacity-slider" class="viewshed-slider" type="range" min="10" max="100" step="5" value="85">
-          <button class="viewshed-clear-btn" id="flood-clear-btn" style="margin-top:8px;width:100%">CLEAR</button>
-        </div>
-      </div>
-
-      <!-- VIEWSHED ANALYSIS TILE ──────────────────────────────────── -->
-      <div class="tile glass" id="tile-viewshed" data-card-id="viewshed" data-tray-index="10">
-        <button type="button" class="tile-return-btn" aria-label="Return card to tray" title="Return to tray">&#8615;</button>
-        <div class="tile-header">
-          <span class="tile-title">VIEWSHED</span>
-          <span class="tile-badge closed" id="viewshed-tile-badge">OFF</span>
-        </div>
-        <div class="tile-value" id="viewshed-tile-pct" style="color:var(--dim2)">—</div>
-        <div class="tile-subtitle" id="viewshed-status">Line-of-sight analysis</div>
-        <button id="viewshed-tile-toggle" class="flight-search-btn" style="margin-top:8px;width:100%;justify-content:center;gap:0">
-          ENABLE
-        </button>
-        <div id="viewshed-controls" style="display:none;margin-top:4px">
-          <div class="viewshed-slider-row" style="margin-top:8px">
-            <span>Observer height</span><span class="viewshed-slider-val" id="viewshed-obs-val">1.7m</span>
-          </div>
-          <input id="viewshed-obs-slider" class="viewshed-slider" type="range" min="1.7" max="50" step="0.5" value="1.7">
-          <div class="viewshed-slider-row">
-            <span>Radius</span><span class="viewshed-slider-val" id="viewshed-radius-val">2.0km</span>
-          </div>
-          <input id="viewshed-radius-slider" class="viewshed-slider" type="range" min="0.5" max="10" step="0.5" value="2">
-          <div class="viewshed-slider-row">
-            <span>Overlay opacity</span><span class="viewshed-slider-val" id="viewshed-opacity-val">90%</span>
-          </div>
-          <input id="viewshed-opacity-slider" class="viewshed-slider" type="range" min="10" max="100" step="5" value="90">
-          <button class="viewshed-clear-btn" id="viewshed-clear-btn" style="margin-top:8px;width:100%">CLEAR</button>
-        </div>
-      </div>
-
     </div><!-- /.card-tray-grid -->
     <div class="card-tray-empty">All cards are pinned to the map. Drag one back here, or click "All to tray" above.</div>
   </div><!-- /.card-tray-scroll -->
@@ -1478,10 +1982,24 @@ html, body {
   </div>
 </div>
 
-<!-- LAYER PANEL -->
-<div id="layer-panel" class="glass">
-  <h3>DATA LAYERS</h3>
-  <div id="layer-list"></div>
+<!-- LAYER PANEL retired — every overlay toggle now lives inside its
+     domain tile (Weather, Hazards, Traffic & Roads, Places, Fuel,
+     Analysis Tools, Flights). See the card tray. -->
+
+<!-- CAMERA LIGHTBOX — opens when a popup snapshot image is clicked.
+     Auto-refreshes every 15 s while open. Closes on backdrop / Esc /
+     × button. -->
+<div id="cam-lightbox" role="dialog" aria-modal="true" aria-labelledby="cam-lightbox-title" aria-hidden="true">
+  <div class="cam-lightbox-inner">
+    <div class="cam-lightbox-meta">
+      <div>
+        <div class="cam-lightbox-title" id="cam-lightbox-title">—</div>
+        <div class="cam-lightbox-sub" id="cam-lightbox-sub"></div>
+      </div>
+      <button class="cam-lightbox-close" id="cam-lightbox-close" aria-label="Close enlarged camera">×</button>
+    </div>
+    <img class="cam-lightbox-img" id="cam-lightbox-img" alt="Enlarged live camera snapshot" />
+  </div>
 </div>
 
 <!-- BOTTOM BAR -->
@@ -2537,6 +3055,7 @@ async function fetchFuel() {
         : (d.state || 'AU');
       sub.textContent = `${cov} median · ${n.toLocaleString()} stations`;
     }
+    if (typeof _setTileUpdated === 'function') _setTileUpdated('fuel');
     const badge = document.getElementById('fuel-badge');
     if (badge && Array.isArray(d.coverage) && d.coverage.length) {
       badge.textContent = d.coverage.join(' + ');
@@ -2632,27 +3151,463 @@ function flyTo(lng, lat, name) {
   hideSearchResults();
   document.getElementById('search-input').value = name.split(',')[0];
   map.flyTo({ center: [lng, lat], zoom: 12, duration: 2000, essential: true });
+  // Persist the last-3 successful searches for the "recent" UI.
+  try {
+    const recents = JSON.parse(localStorage.getItem('gods-eye-recent-searches') || '[]');
+    const next = [{ name: name.split(',')[0], lng, lat }, ...recents.filter(r => r.name !== name.split(',')[0])].slice(0, 3);
+    localStorage.setItem('gods-eye-recent-searches', JSON.stringify(next));
+  } catch (e) {}
 }
+
+// ─── PHASE D — Search keyboard nav + Cmd/Ctrl+K shortcut ─────
+// Arrow keys cycle results; Enter selects; Esc closes. Cmd/Ctrl+K
+// focuses the search input from anywhere.
+(function wireSearchKeyboardNav() {
+  const input = document.getElementById('search-input');
+  const results = document.getElementById('search-results');
+  if (!input || !results) return;
+  let activeIdx = -1;
+  function items() { return Array.from(results.querySelectorAll('.search-item')); }
+  function setActive(i) {
+    const list = items();
+    if (!list.length) return;
+    activeIdx = ((i % list.length) + list.length) % list.length;
+    list.forEach((el, idx) => el.classList.toggle('is-active', idx === activeIdx));
+    list[activeIdx].scrollIntoView({ block: 'nearest' });
+  }
+  input.addEventListener('keydown', (e) => {
+    const list = items();
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (list.length) setActive(activeIdx + 1); }
+    else if (e.key === 'ArrowUp')   { e.preventDefault(); if (list.length) setActive(activeIdx - 1); }
+    else if (e.key === 'Enter') {
+      if (activeIdx >= 0 && list[activeIdx]) { e.preventDefault(); list[activeIdx].click(); }
+    } else if (e.key === 'Escape') { hideSearchResults(); input.blur(); }
+  });
+  input.addEventListener('input', () => { activeIdx = -1; });
+  // Global: Cmd/Ctrl+K → focus search.
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault(); input.focus(); input.select();
+    }
+  });
+})();
 
 // ─── UPDATE LAYER COUNTS ─────────────────────────────────────
 function updateLayerCount(id, count) {
   const layer = LAYERS.find(l => l.id === id);
   if (layer) layer.count = count;
   renderLayerPanel();
+  // Stamp the matching domain tile's freshness footer.
+  if (typeof _setTileUpdated === 'function') {
+    if (id === 'weather') _setTileUpdated('weather');
+    else if (id === 'flights') _setTileUpdated('flights');
+    else if (id === 'fires' || id === 'earthquakes') _setTileUpdated('hazards');
+    else if (id === 'speedcams') _setTileUpdated('traffic');
+    else if (id === 'cities') _setTileUpdated('places');
+  }
 }
 
 // ─── RENDER LAYER PANEL ──────────────────────────────────────
+// The floating layer panel was retired in favour of per-tile toggles. We
+// keep this function as a no-op so legacy callers (updateLayerCount,
+// toggleLayer) don't error. Per-tile dots are kept in sync via
+// _refreshTileLayerRows() below.
 function renderLayerPanel() {
-  const el = document.getElementById('layer-list');
-  el.innerHTML = LAYERS.map(l => `
-    <div class="layer-item ${l.enabled ? '' : 'disabled'}" onclick="toggleLayer('${l.id}')">
-      <div class="layer-toggle-dot ${l.enabled ? 'active' : ''}"
-           style="border-color:${l.color};${l.enabled ? `background:${l.color};box-shadow:0 0 6px ${l.color}` : `background:transparent`}"></div>
-      <span class="layer-item-label">${l.label}</span>
-      <span class="layer-item-count">${l.count > 0 ? l.count : '—'}</span>
-    </div>
-  `).join('');
+  if (typeof _refreshTileLayerRows === 'function') _refreshTileLayerRows();
 }
+
+// ─── UNIFIED TILE-ROW TOGGLE WIRING ─────────────────────────
+// Every domain tile uses .tile__row[data-layer-id] for its on/off dots.
+// This single delegated handler routes a click to the matching backing
+// toggler, then mirrors state back via data-on / aria-pressed. Sub-rows
+// with chevrons (data-row-chevron) toggle aria-expanded for inline body
+// reveal. Filter chips inside row bodies use .tile__chip[data-on].
+function _setRowOn(row, on) {
+  if (!row) return;
+  row.setAttribute('aria-pressed', String(!!on));
+  row.setAttribute('data-on', on ? '1' : '0');
+  // Mirror state into the count label when it's a simple on/off cell
+  // (i.e. text content was 'on' / 'off' / a layer name) — leaves numeric
+  // counts and id-driven cells alone.
+  const countEl = row.querySelector('.tile__row-count');
+  if (countEl) {
+    const t = (countEl.textContent || '').trim().toLowerCase();
+    if (t === 'on' || t === 'off' || t === 'live') {
+      countEl.textContent = on ? 'on' : 'off';
+      countEl.classList.toggle('live', !!on);
+      countEl.classList.toggle('muted', !on);
+    }
+  }
+}
+
+// Refresh every layer-driven row from canonical state (LAYERS array,
+// overlay localStorage, viewshed/flood active flags). Called on init
+// and after toggles to keep all surfaces in sync.
+function _refreshTileLayerRows() {
+  document.querySelectorAll('.tile__row[data-layer-id]').forEach(row => {
+    const id = row.getAttribute('data-layer-id');
+    let on = null;
+    if (['weather','flights','fires','earthquakes','speedcams','cities'].includes(id)) {
+      const layer = LAYERS.find(l => l.id === id);
+      if (layer) on = !!layer.enabled;
+    } else if (id === 'flight-trails') {
+      const layer = LAYERS.find(l => l.id === 'flights');
+      on = !!(layer && layer.enabled);
+    } else if (id === 'traffic-flow' || id === 'places-poi' || id === 'traffic-incidents' || id === 'cameras') {
+      on = (typeof _getSavedOverlay === 'function' ? _getSavedOverlay(id) === 'on' : false);
+    } else if (id === 'fuel') {
+      on = !!(typeof _fuelMapOn !== 'undefined' && _fuelMapOn);
+    } else if (id === 'viewshed') {
+      on = !!(typeof _viewshedActive !== 'undefined' && _viewshedActive);
+    } else if (id === 'flood') {
+      on = !!(typeof _floodActive !== 'undefined' && _floodActive);
+    } else if (id === 'wx-radar' || id === 'wx-heatmap' || id === 'wx-wind') {
+      const k = id.replace('wx-','');
+      on = !!(typeof _wxOverlayState !== 'undefined' && _wxOverlayState && _wxOverlayState[k]);
+    }
+    if (on !== null) _setRowOn(row, on);
+    // Push counts where we have them.
+    const countEl = row.querySelector('.tile__row-count');
+    if (countEl) {
+      if (id === 'fires' && typeof fireData !== 'undefined' && fireData && Array.isArray(fireData.features)) countEl.textContent = fireData.features.length || '—';
+      else if (id === 'earthquakes' && typeof earthquakeData !== 'undefined' && earthquakeData && Array.isArray(earthquakeData.features)) countEl.textContent = earthquakeData.features.length || '—';
+      else if (id === 'speedcams' && typeof speedCamData !== 'undefined' && speedCamData && Array.isArray(speedCamData.features)) countEl.textContent = speedCamData.features.length || '—';
+      else if (id === 'cities' && typeof CITIES !== 'undefined' && Array.isArray(CITIES)) countEl.textContent = CITIES.length;
+    }
+  });
+}
+
+// Click handler. Wired once, lives on the document body so dynamically
+// added rows (e.g. after a basemap swap re-renders) still work.
+function _onTileRowClick(e) {
+  // Chevron click — expand/collapse only, don't fire the toggle.
+  const chev = e.target.closest('[data-row-chevron]');
+  const row  = e.target.closest('.tile__row[data-layer-id]');
+  if (!row) return;
+  if (row.getAttribute('aria-disabled') === 'true') return;
+  if (chev) {
+    e.stopPropagation();
+    const expanded = row.getAttribute('aria-expanded') === 'true';
+    row.setAttribute('aria-expanded', String(!expanded));
+    return;
+  }
+  const id = row.getAttribute('data-layer-id');
+  const wasOn = row.getAttribute('data-on') === '1';
+  const next = !wasOn;
+
+  switch (id) {
+    case 'weather': case 'flights': case 'fires': case 'earthquakes':
+    case 'speedcams': case 'cities':
+      toggleLayer(id);  // flips LAYERS[id].enabled, updates map visibility
+      _refreshTileLayerRows();
+      return;
+    case 'flight-trails': {
+      // For now, trails follow flights — simply forward to flights.
+      toggleLayer('flights');
+      _refreshTileLayerRows();
+      return;
+    }
+    case 'traffic-flow':
+      _setSavedOverlay('traffic-flow', next ? 'on' : 'off');
+      _applyTrafficFlow();
+      _setRowOn(row, next);
+      return;
+    case 'places-poi':
+      _setSavedOverlay('places-poi', next ? 'on' : 'off');
+      _applyPlacesPoi();
+      _setRowOn(row, next);
+      return;
+    case 'traffic-incidents':
+      _setSavedOverlay('traffic-incidents', next ? 'on' : 'off');
+      _applyIncidents();
+      _setRowOn(row, next);
+      return;
+    case 'cameras':
+      _setSavedOverlay('cameras', next ? 'on' : 'off');
+      _applyCameras();
+      _setRowOn(row, next);
+      return;
+    case 'viewshed':
+      toggleViewshed(next);
+      if (next) _setViewshedStatus('', 'Click map to place observer');
+      _setRowOn(row, !!_viewshedActive);
+      // Auto-expand to show sliders when enabled.
+      row.setAttribute('aria-expanded', _viewshedActive ? 'true' : 'false');
+      return;
+    case 'flood':
+      toggleFlood(next);
+      if (next) _setFloodStatus('', 'Click map to place flood origin');
+      _setRowOn(row, !!_floodActive);
+      row.setAttribute('aria-expanded', _floodActive ? 'true' : 'false');
+      return;
+    case 'fuel':
+      // Defer to the fuel module's toggler if available.
+      if (typeof window._toggleFuelMapExt === 'function') {
+        window._toggleFuelMapExt();
+      }
+      return;
+    case 'wx-radar': case 'wx-heatmap': case 'wx-wind':
+      // Weather sub-layer rows still flow through the existing _toggleLayer
+      // helper which calls _renderLayerBtn(row, on). Trigger directly:
+      if (typeof _toggleLayer === 'function') {
+        _toggleLayer(row.getAttribute('data-layer'), row);
+      }
+      return;
+  }
+}
+document.addEventListener('click', _onTileRowClick);
+// Keyboard accessibility: Enter / Space activates a focused row.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const row = e.target.closest && e.target.closest('.tile__row[data-layer-id]');
+  if (!row) return;
+  e.preventDefault();
+  row.click();
+});
+
+// Filter-chip handler (speed-cam types, POI categories). Chips live inside
+// .tile__row-body; toggling data-on flips visual state. The actual map-side
+// effect is implemented per-domain (see _applyPoiCategoryFilter).
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('.tile__chip');
+  if (!chip) return;
+  const next = chip.getAttribute('data-on') === '1' ? '0' : '1';
+  chip.setAttribute('data-on', next);
+  if (chip.hasAttribute('data-cam-type')) {
+    if (typeof _applySpeedcamTypeFilter === 'function') _applySpeedcamTypeFilter();
+  } else if (chip.hasAttribute('data-poi-cat')) {
+    if (typeof _applyPoiCategoryFilter === 'function') _applyPoiCategoryFilter();
+  }
+});
+
+// ─── PHASE C — DEPTH HELPERS ─────────────────────────────────
+// Relative time formatter for tile footers. "just now" / "5 min ago" / "1h ago".
+function _relativeTime(ms) {
+  if (!ms) return '—';
+  const dt = Math.max(0, Date.now() - ms);
+  if (dt < 30_000) return 'just now';
+  const m = Math.floor(dt / 60_000);
+  if (m < 1) return `${Math.floor(dt / 1000)}s ago`;
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+// Last-fetch timestamps per data domain. Tiles read from this object and
+// re-render their footers via a 30s tick timer.
+const _tileLastUpdated = Object.create(null);
+function _setTileUpdated(name, ts = Date.now()) {
+  _tileLastUpdated[name] = ts;
+  document.querySelectorAll(`[data-tile-updated="${name}"]`).forEach(el => {
+    el.textContent = `updated ${_relativeTime(ts)}`;
+  });
+}
+// Single periodic tick re-renders every footer using its stored ts.
+setInterval(() => {
+  Object.keys(_tileLastUpdated).forEach(name => {
+    document.querySelectorAll(`[data-tile-updated="${name}"]`).forEach(el => {
+      el.textContent = `updated ${_relativeTime(_tileLastUpdated[name])}`;
+    });
+  });
+}, 30_000);
+
+// Refresh button — invokes the matching domain's fetch fn. Spinning class
+// gives instant feedback; the fetch itself updates `_tileLastUpdated` once
+// it completes via the existing call sites (or we stamp it here on success).
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.tile__refresh[data-tile-refresh]');
+  if (!btn) return;
+  const name = btn.getAttribute('data-tile-refresh');
+  btn.classList.add('spinning');
+  const done = () => { setTimeout(() => btn.classList.remove('spinning'), 400); };
+  try {
+    if (name === 'weather' && typeof fetchWeather === 'function') {
+      Promise.resolve(fetchWeather(true)).finally(done);
+    } else if (name === 'flights' && typeof fetchFlights === 'function') {
+      Promise.resolve(fetchFlights()).finally(done);
+    } else if (name === 'hazards') {
+      const tasks = [];
+      if (typeof fetchFires === 'function') tasks.push(Promise.resolve(fetchFires()));
+      if (typeof fetchEarthquakes === 'function') tasks.push(Promise.resolve(fetchEarthquakes()));
+      Promise.allSettled(tasks).finally(done);
+    } else if (name === 'traffic') {
+      if (typeof _fetchIncidents === 'function') Promise.resolve(_fetchIncidents()).finally(done);
+      else done();
+    } else if (name === 'fuel' && typeof loadFuelStations === 'function') {
+      Promise.resolve(loadFuelStations(typeof _fuelCurrentProduct !== 'undefined' ? _fuelCurrentProduct : 'ULP')).finally(done);
+    } else { done(); }
+  } catch (err) { console.warn('refresh failed:', err); done(); }
+});
+
+// Populate-fns for the group tiles. Each reads existing in-memory state
+// (no new API calls) and writes summary chips/counts. Called from the
+// global refresh tick + data-fetcher success paths via _refreshTileSummaries.
+function _populateHazardsTile() {
+  // `let` declarations live in the script scope, not on window — read by ID.
+  const fires = (typeof fireData !== 'undefined' && fireData && fireData.features) || [];
+  const quakes = (typeof earthquakeData !== 'undefined' && earthquakeData && earthquakeData.features) || [];
+  const fc = document.getElementById('fires-count');
+  if (fc) fc.textContent = fires.length || '—';
+  const qc = document.getElementById('quakes-count');
+  if (qc) qc.textContent = quakes.length || '—';
+  // Per-state fire chips (top 5 states by count).
+  const stateChips = document.getElementById('fires-state-chips');
+  if (stateChips) {
+    const byState = {};
+    fires.forEach(f => {
+      const s = (f.properties && (f.properties.state || f.properties.STATE || f.properties.region)) || '?';
+      byState[s] = (byState[s] || 0) + 1;
+    });
+    const top = Object.entries(byState).sort((a,b) => b[1] - a[1]).slice(0, 5);
+    stateChips.innerHTML = top.map(([s, n]) =>
+      `<span class="tile__chip" data-on="1" style="cursor:default">${s} · ${n}</span>`
+    ).join('');
+  }
+  const firesMeta = document.getElementById('fires-meta');
+  if (firesMeta) {
+    if (!fires.length) firesMeta.textContent = 'No active fires.';
+    else {
+      // Most recent feature with a name/title field.
+      const first = fires[0] && fires[0].properties || {};
+      const label = first.title || first.name || first.NAME || 'Active incident';
+      firesMeta.innerHTML = `<strong>Most recent:</strong> ${String(label).slice(0, 40)}`;
+    }
+  }
+  const quakesMeta = document.getElementById('quakes-meta');
+  if (quakesMeta) {
+    if (!quakes.length) quakesMeta.textContent = 'No recent earthquakes.';
+    else {
+      let maxMag = 0;
+      quakes.forEach(q => {
+        const m = q.properties && (q.properties.magnitude || q.properties.mag);
+        if (typeof m === 'number' && m > maxMag) maxMag = m;
+      });
+      // 24h count
+      const now = Date.now();
+      const last24h = quakes.filter(q => {
+        const t = q.properties && (q.properties.time || q.properties.eventTime);
+        const ts = typeof t === 'number' ? t : Date.parse(t || '');
+        return ts && (now - ts) <= 24 * 3600 * 1000;
+      }).length;
+      quakesMeta.innerHTML = `<strong>${last24h}</strong> in last 24h · max magnitude <strong>${maxMag.toFixed(1)}</strong>`;
+    }
+  }
+  const summary = document.getElementById('hazards-summary');
+  if (summary) {
+    const fc2 = fires.length, qc2 = quakes.length;
+    summary.textContent = `${fc2} fire${fc2 === 1 ? '' : 's'} · ${qc2} quake${qc2 === 1 ? '' : 's'} (90d)`;
+  }
+  if (fires.length || quakes.length) _setTileUpdated('hazards');
+}
+
+function _populateTrafficTile() {
+  const incidents = (typeof _incidentsData !== 'undefined' && _incidentsData && _incidentsData.features) || [];
+  const cams = (typeof speedCamData !== 'undefined' && speedCamData && speedCamData.features) || [];
+  const incEl = document.getElementById('incidents-count');
+  const camEl = document.getElementById('speedcams-count');
+  if (incEl) {
+    if (_getSavedOverlay && _getSavedOverlay('traffic-incidents') === 'on') {
+      incEl.textContent = incidents.length || '0';
+      incEl.classList.toggle('danger', incidents.length > 0);
+    }
+  }
+  if (camEl) camEl.textContent = cams.length ? cams.length.toLocaleString() : '—';
+  const sum = document.getElementById('traffic-summary');
+  if (sum) {
+    const flowOn = _getSavedOverlay && _getSavedOverlay('traffic-flow') === 'on';
+    sum.innerHTML = `${flowOn ? '<span class="live">flow live</span> · ' : ''}${incidents.length} incident${incidents.length === 1 ? '' : 's'}`;
+  }
+  if (incidents.length || cams.length) _setTileUpdated('traffic');
+}
+
+function _populatePlacesTile() {
+  const cities = (typeof CITIES !== 'undefined' && CITIES) || [];
+  const ctEl = document.getElementById('cities-count');
+  if (ctEl) ctEl.textContent = cities.length;
+  const poiEl = document.getElementById('poi-count');
+  if (poiEl) {
+    if (_getSavedOverlay && _getSavedOverlay('places-poi') === 'on') {
+      let n = 0;
+      try {
+        const src = (typeof map !== 'undefined' && map) && map.getSource(POI_SOURCE);
+        n = (src && src._data && src._data.features && src._data.features.length) || 0;
+      } catch (e) {}
+      poiEl.textContent = n ? `${n} visible` : 'on';
+    } else {
+      poiEl.textContent = 'off';
+    }
+  }
+  _setTileUpdated('places');
+}
+
+// Speed cam type chip filter. Chips have data-cam-type="fixed|red-light|mobile".
+// Speed-cam features have a `type` property normalised in addSpeedCamerasLayer.
+function _applySpeedcamTypeFilter() {
+  if (!map) return;
+  const chips = document.querySelectorAll('#speedcams-type-chips .tile__chip');
+  const enabled = new Set();
+  chips.forEach(c => { if (c.getAttribute('data-on') === '1') enabled.add(c.getAttribute('data-cam-type')); });
+  // Layer ids for speed cams have the prefix 'layer-speedcams'.
+  map.getStyle().layers.forEach(l => {
+    if (!l.id.startsWith('layer-speedcams')) return;
+    const filter = enabled.size === 0
+      ? ['==', ['get', 'type'], '__none__']  // hide all if every chip off
+      : ['in', ['get', 'type'], ['literal', Array.from(enabled)]];
+    try { map.setFilter(l.id, filter); } catch (e) {}
+  });
+}
+
+// POI category filter — sets the active type list used by the next
+// _queryPoiForViewport call. The next idle event (~600ms after panning)
+// will pick up the new types.
+window._poiActiveCategories = ['restaurant', 'cafe'];
+function _applyPoiCategoryFilter() {
+  const chips = document.querySelectorAll('#poi-cat-chips .tile__chip');
+  const cats = [];
+  chips.forEach(c => { if (c.getAttribute('data-on') === '1') cats.push(c.getAttribute('data-poi-cat')); });
+  window._poiActiveCategories = cats.length ? cats : ['restaurant'];
+  // Trigger a re-query immediately if the layer is active.
+  if (typeof _queryPoiForViewport === 'function' && _getSavedOverlay('places-poi') === 'on') {
+    try { _queryPoiForViewport(); } catch (e) {}
+  }
+}
+
+// Master tick: every 5s repopulate group tiles from latest in-memory state.
+// Cheap (just DOM writes) and keeps everything in sync without each fetcher
+// having to know about every tile.
+function _refreshTileSummaries() {
+  try { _populateHazardsTile(); } catch (e) {}
+  try { _populateTrafficTile(); } catch (e) {}
+  try { _populatePlacesTile(); } catch (e) {}
+}
+setInterval(_refreshTileSummaries, 5000);
+// Run once after DOMContentLoaded so initial state shows up.
+setTimeout(_refreshTileSummaries, 1500);
+
+// ─── PHASE D — Tile-tray filter ─────────────────────────────
+// Type into "Filter cards…" to narrow the tray to matching tile titles.
+(function wireTileFilter() {
+  const input = document.getElementById('tile-filter-input');
+  if (!input) return;
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    document.querySelectorAll('#card-tray-grid .tile').forEach(tile => {
+      if (!q) { tile.classList.remove('is-filtered-out'); return; }
+      const title = (tile.querySelector('.tile-title')?.textContent || '').toLowerCase();
+      const cardId = (tile.getAttribute('data-card-id') || '').toLowerCase();
+      tile.classList.toggle('is-filtered-out', !(title.includes(q) || cardId.includes(q)));
+    });
+    // Hide group headers whose group has no visible tiles.
+    document.querySelectorAll('.tile-group__header').forEach(h => {
+      const groupKey = h.getAttribute('data-group');
+      const visible = Array.from(document.querySelectorAll(`#card-tray-grid .tile[data-group-key="${groupKey}"]`))
+        .some(t => !t.classList.contains('is-filtered-out'));
+      h.style.display = visible ? '' : 'none';
+    });
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { input.value = ''; input.dispatchEvent(new Event('input')); input.blur(); } });
+})();
 
 function toggleLayer(id) {
   const layer = LAYERS.find(l => l.id === id);
@@ -2862,12 +3817,6 @@ function wireMapSettingsPanel() {
       b.classList.toggle('active', b.dataset.terrain === curTerrain));
     panel.querySelectorAll('[data-tiles]').forEach(b =>
       b.classList.toggle('active', b.dataset.tiles === curTiles));
-    panel.querySelectorAll('[data-overlay]').forEach(b => {
-      const on = _getSavedOverlay(b.dataset.overlay) === 'on';
-      b.classList.toggle('active', on);
-      const stateEl = b.querySelector('.toggle-state');
-      if (stateEl) stateEl.textContent = on ? 'ON' : 'OFF';
-    });
   };
   refreshActiveStates();
 
@@ -2945,17 +3894,22 @@ function wireMapSettingsPanel() {
     });
   });
 
-  // Overlay toggles — each button flips its own overlay on/off.
-  panel.querySelectorAll('[data-overlay]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.overlay;
-      const next = _getSavedOverlay(id) === 'on' ? 'off' : 'on';
-      _setSavedOverlay(id, next);
-      if (id === 'traffic-flow') _applyTrafficFlow();
-      else if (id === 'places-poi') _applyPlacesPoi();
-      else if (id === 'traffic-incidents') _applyIncidents();
-      refreshActiveStates();
-    });
+  // (Overlay toggles moved to per-tile sub-row dots — no cog-panel
+  // wiring needed any more.)
+
+  // Reset to defaults — clears every gods-eye-* localStorage key and
+  // reloads the page so the user sees a clean slate.
+  document.getElementById('map-settings-reset')?.addEventListener('click', () => {
+    if (!confirm('Reset map style and all layer toggles to defaults?')) return;
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('gods-eye-')) keysToRemove.push(k);
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch (e) {}
+    location.reload();
   });
 
   // Viewshed tile controls
@@ -3341,12 +4295,60 @@ function _renderPoiBasicHTML(p, lat, lng) {
     <div class="popup-title">${p.name || 'Place'}</div>
     ${typeLabel ? `<div class="poi-category">${typeLabel}</div>` : ''}
     ${p.address ? `<div class="poi-address">${p.address}</div>` : ''}
-    <div class="poi-loading">Loading details…</div>
-    <div class="poi-actions">
-      <button onclick="routeToFuelStation(${lat}, ${lng}, '${safeName}')" class="poi-btn poi-btn-primary">→ DIRECTIONS</button>
+    <div class="popup-skel" data-placeholder="loading-details">
+      <div class="popup-skel-line med"></div>
+      <div class="popup-skel-line short"></div>
+      <div class="popup-skel-line med"></div>
+    </div>
+    ${_renderPopupActionBar(lat, lng, safeName)}
+  `;
+}
+
+// Shared icon-button bar for popups: copy coords / open in Google Maps /
+// directions. Lives below detail content; same chrome across every popup.
+function _renderPopupActionBar(lat, lng, name, googleMapsUrl) {
+  const safeName = (name || 'location').replace(/'/g, "\\'");
+  const gmaps = googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+  return `
+    <div class="popup-action-bar">
+      <button onclick="routeToFuelStation(${lat}, ${lng}, '${safeName}')" title="Get directions" aria-label="Directions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 11l18-7-7 18-2-7-9-4z"/></svg>
+        Directions
+      </button>
+      <button onclick="_copyCoords(${lat}, ${lng}, this)" title="Copy coordinates" aria-label="Copy coordinates">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+        Copy
+      </button>
+      <a href="${gmaps}" target="_blank" rel="noopener noreferrer" title="Open in Google Maps" aria-label="Open in Google Maps">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M14 3h7v7"/><path d="M10 14L21 3"/><path d="M21 14v7h-7"/><path d="M3 10v11h11"/></svg>
+        Maps
+      </a>
     </div>
   `;
 }
+
+// Copy coordinates to clipboard with visual feedback on the originating button.
+window._copyCoords = function (lat, lng, btn) {
+  const text = `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`;
+  const done = () => {
+    if (!btn) return;
+    const orig = btn.textContent;
+    btn.classList.add('copied-feedback');
+    btn.textContent = '✓ Copied';
+    setTimeout(() => {
+      btn.classList.remove('copied-feedback');
+      btn.textContent = orig;
+    }, 1200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => {
+      // fallback: open prompt
+      window.prompt('Copy coordinates:', text);
+    });
+  } else {
+    window.prompt('Copy coordinates:', text);
+  }
+};
 
 function _renderPoiRichHTML(basic, details, lat, lng) {
   const safeName = (details.name || basic.name || 'place').replace(/'/g, "\\'");
@@ -3415,10 +4417,7 @@ function _renderPoiRichHTML(basic, details, lat, lng) {
     ${phone ? `<div class="poi-row"><a href="tel:${phone.replace(/\s+/g,'')}" class="poi-link">${phone}</a></div>` : ''}
     ${website ? `<div class="poi-row"><a href="${website}" target="_blank" rel="noopener noreferrer" class="poi-link">Website ↗</a></div>` : ''}
     ${reviewHtml ? `<div class="poi-reviews">${reviewHtml}</div>` : ''}
-    <div class="poi-actions">
-      <button onclick="routeToFuelStation(${lat}, ${lng}, '${safeName}')" class="poi-btn poi-btn-primary">→ DIRECTIONS</button>
-      ${googleMapsUrl ? `<a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" class="poi-btn poi-btn-secondary">Google Maps ↗</a>` : ''}
-    </div>
+    ${_renderPopupActionBar(lat, lng, safeName, googleMapsUrl)}
   `;
 }
 
@@ -3847,12 +4846,239 @@ function _applyIncidents() {
   }
 }
 
+// ── LIVE TRAFFIC CAMERAS (TfNSW) ─────────────────────────────
+// 197 NSW traffic camera locations; each has a snapshot image URL that
+// updates server-side every ~15 seconds. Click a marker → popup with
+// the still image, refreshing every 15 s while the popup stays open.
+const CAMERAS_SOURCE = 'src-traffic-cameras';
+const CAMERAS_LAYER  = 'layer-traffic-cameras';
+const CAMERAS_CLUSTER_LAYER = 'layer-traffic-cameras-cluster';
+const CAMERAS_CLUSTER_COUNT_LAYER = 'layer-traffic-cameras-cluster-count';
+const CAMERAS_MIN_ZOOM = 7;   // hide individual + cluster below this — at country zoom 197 dots are noise
+let _camerasData     = null;
+let _camerasFetched  = false;
+let _camerasPollTimer = null;
+
+function _addCamerasLayer() {
+  if (!map) return;
+  if (!map.getSource(CAMERAS_SOURCE)) {
+    map.addSource(CAMERAS_SOURCE, {
+      type: 'geojson',
+      data: _camerasData || { type: 'FeatureCollection', features: [] },
+      // Clustering keeps the map clean in dense areas (Sydney CBD has dozens
+      // of cameras within a kilometre). Clusters break apart at zoom 12+,
+      // matching incidents' clusterMaxZoom for visual consistency.
+      cluster: true,
+      clusterRadius: 45,
+      clusterMaxZoom: 12,
+    });
+  }
+  // Cluster circles — sized + tinted by count.
+  if (!map.getLayer(CAMERAS_CLUSTER_LAYER)) {
+    map.addLayer({
+      id: CAMERAS_CLUSTER_LAYER, type: 'circle', source: CAMERAS_SOURCE,
+      filter: ['has', 'point_count'],
+      minzoom: CAMERAS_MIN_ZOOM,
+      paint: {
+        'circle-color': [
+          'step', ['get', 'point_count'],
+          '#22d3ee',     // 1-4
+          5, '#0ea5b8',  // 5-14
+          15, '#0e7c8c', // 15+
+        ],
+        'circle-radius': [
+          'step', ['get', 'point_count'],
+          14, 5, 18, 15, 24,
+        ],
+        'circle-stroke-width': 2,
+        'circle-stroke-color': 'rgba(4, 8, 16, 0.7)',
+        'circle-opacity': 0.92,
+      },
+    });
+    map.on('click', CAMERAS_CLUSTER_LAYER, _onCameraClusterClick);
+    map.on('mouseenter', CAMERAS_CLUSTER_LAYER, () => map.getCanvas().style.cursor = 'pointer');
+    map.on('mouseleave', CAMERAS_CLUSTER_LAYER, () => map.getCanvas().style.cursor = '');
+  }
+  // Cluster count label.
+  if (!map.getLayer(CAMERAS_CLUSTER_COUNT_LAYER)) {
+    map.addLayer({
+      id: CAMERAS_CLUSTER_COUNT_LAYER, type: 'symbol', source: CAMERAS_SOURCE,
+      filter: ['has', 'point_count'],
+      minzoom: CAMERAS_MIN_ZOOM,
+      layout: {
+        'text-field': '{point_count_abbreviated}',
+        'text-font': ['Open Sans Bold'],
+        'text-size': 11,
+        'text-allow-overlap': true,
+      },
+      paint: {
+        'text-color': '#ffffff',
+        'text-halo-color': 'rgba(4, 8, 16, 0.6)',
+        'text-halo-width': 1,
+      },
+    });
+  }
+  // Individual (unclustered) cameras.
+  if (!map.getLayer(CAMERAS_LAYER)) {
+    map.addLayer({
+      id: CAMERAS_LAYER, type: 'circle', source: CAMERAS_SOURCE,
+      filter: ['!', ['has', 'point_count']],
+      minzoom: CAMERAS_MIN_ZOOM,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 3, 12, 7, 16, 11],
+        'circle-color': '#22d3ee',
+        'circle-stroke-width': 2,
+        'circle-stroke-color': 'rgba(4, 8, 16, 0.85)',
+        'circle-opacity': 0.95,
+      },
+    });
+    map.on('click', CAMERAS_LAYER, _onCameraClick);
+    map.on('mouseenter', CAMERAS_LAYER, () => map.getCanvas().style.cursor = 'pointer');
+    map.on('mouseleave', CAMERAS_LAYER, () => map.getCanvas().style.cursor = '');
+  }
+}
+
+// Click a cluster → zoom to its expansion level so the children spread out.
+function _onCameraClusterClick(e) {
+  const f = e.features && e.features[0];
+  if (!f) return;
+  const clusterId = f.properties.cluster_id;
+  const src = map.getSource(CAMERAS_SOURCE);
+  if (!src || !src.getClusterExpansionZoom) return;
+  src.getClusterExpansionZoom(clusterId, (err, zoom) => {
+    if (err) return;
+    map.easeTo({ center: f.geometry.coordinates, zoom: Math.max(zoom, CAMERAS_MIN_ZOOM + 1), duration: 600 });
+  });
+}
+
+function _removeCamerasLayer() {
+  if (!map) return;
+  if (map.getLayer(CAMERAS_LAYER)) map.removeLayer(CAMERAS_LAYER);
+  if (map.getLayer(CAMERAS_CLUSTER_COUNT_LAYER)) map.removeLayer(CAMERAS_CLUSTER_COUNT_LAYER);
+  if (map.getLayer(CAMERAS_CLUSTER_LAYER)) map.removeLayer(CAMERAS_CLUSTER_LAYER);
+  if (map.getSource(CAMERAS_SOURCE)) map.removeSource(CAMERAS_SOURCE);
+  if (_camerasPollTimer) { clearInterval(_camerasPollTimer); _camerasPollTimer = null; }
+}
+async function _fetchCameras() {
+  try {
+    const r = await _fetch(`${API}/proxy/traffic-cameras`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    _camerasData = j.data || { type: 'FeatureCollection', features: [] };
+    _camerasFetched = true;
+    const src = map && map.getSource(CAMERAS_SOURCE);
+    if (src) src.setData(_camerasData);
+    // Reflect count in the Traffic & Roads tile.
+    const cntEl = document.getElementById('cameras-count');
+    if (cntEl) cntEl.textContent = (_camerasData.features || []).length || '—';
+  } catch (e) { console.warn('cameras fetch failed:', e); }
+}
+function _applyCameras() {
+  if (!map) return;
+  const on = _getSavedOverlay('cameras') === 'on';
+  if (on) {
+    _addCamerasLayer();
+    if (!_camerasFetched) _fetchCameras();
+  } else {
+    _removeCamerasLayer();
+  }
+}
+
+// Click handler → popup with auto-refreshing snapshot. The TfNSW snapshot
+// URL is static; we cache-bust with a `?t=...` query so each refresh hits
+// a fresh image. Refresh interval cleared on popup close.
+function _onCameraClick(e) {
+  const f = e.features && e.features[0];
+  if (!f) return;
+  const p = f.properties || {};
+  const [lng, lat] = f.geometry.coordinates;
+  const baseUrl = String(p.url || '');
+  if (!baseUrl) return;
+  const safeName = String(p.title || 'Camera').replace(/'/g, "\\'");
+  const region = String(p.region || '').replace(/_/g, ' ').toLowerCase();
+  const view = String(p.view || '').slice(0, 200);
+  const direction = String(p.direction || '');
+  // Initial render — image URL has a cache-buster appended.
+  const renderHTML = (ts) => `
+    <div class="popup-title">${safeName}</div>
+    ${region || direction ? `<div class="poi-category">${[region, direction && 'looking ' + direction].filter(Boolean).join(' \u00b7 ')}</div>` : ''}
+    <div class="cam-frame">
+      <img class="cam-img" src="${baseUrl}?t=${ts}" alt="Live camera snapshot of ${safeName}" />
+      <div class="cam-pulse"><span></span> live · refreshes every 15s</div>
+    </div>
+    ${view ? `<div class="poi-address">${view}</div>` : ''}
+    ${_renderPopupActionBar(lat, lng, safeName)}
+  `;
+  const popup = new maplibregl.Popup({ offset: 12, maxWidth: '380px', className: 'poi-popup cam-popup' })
+    .setLngLat([lng, lat])
+    .setHTML(renderHTML(Date.now()))
+    .addTo(map);
+  // Refresh the image src every 15 s. Clear when popup closes.
+  const interval = setInterval(() => {
+    const el = popup.getElement && popup.getElement();
+    const img = el && el.querySelector('.cam-img');
+    if (!img) { clearInterval(interval); return; }
+    img.src = `${baseUrl}?t=${Date.now()}`;
+  }, 15_000);
+  popup.on('close', () => clearInterval(interval));
+  // Click-to-enlarge: tap the snapshot image → lightbox.
+  setTimeout(() => {
+    const el = popup.getElement && popup.getElement();
+    const img = el && el.querySelector('.cam-img');
+    if (img) img.addEventListener('click', () => _openCameraLightbox(baseUrl, p));
+  }, 0);
+}
+
+// Lightbox control. Refreshes every 15 s while open; closes on backdrop /
+// × button / Escape. Stays mounted in the DOM — we only flip .open class
+// and swap the image src.
+let _camLightboxInterval = null;
+function _openCameraLightbox(baseUrl, props) {
+  const lb = document.getElementById('cam-lightbox');
+  const img = document.getElementById('cam-lightbox-img');
+  const title = document.getElementById('cam-lightbox-title');
+  const sub = document.getElementById('cam-lightbox-sub');
+  if (!lb || !img) return;
+  const region = String(props.region || '').replace(/_/g, ' ').toLowerCase();
+  const direction = String(props.direction || '');
+  if (title) title.textContent = String(props.title || 'Camera');
+  if (sub) sub.textContent = [region, direction && 'looking ' + direction, props.view].filter(Boolean).join(' \u00b7 ');
+  img.src = `${baseUrl}?t=${Date.now()}`;
+  lb.classList.add('open');
+  lb.setAttribute('aria-hidden', 'false');
+  if (_camLightboxInterval) clearInterval(_camLightboxInterval);
+  _camLightboxInterval = setInterval(() => { img.src = `${baseUrl}?t=${Date.now()}`; }, 15_000);
+}
+function _closeCameraLightbox() {
+  const lb = document.getElementById('cam-lightbox');
+  if (!lb) return;
+  lb.classList.remove('open');
+  lb.setAttribute('aria-hidden', 'true');
+  if (_camLightboxInterval) { clearInterval(_camLightboxInterval); _camLightboxInterval = null; }
+}
+// Wire close interactions once.
+document.addEventListener('DOMContentLoaded', () => {
+  const lb = document.getElementById('cam-lightbox');
+  const img = document.getElementById('cam-lightbox-img');
+  const closeBtn = document.getElementById('cam-lightbox-close');
+  if (lb) lb.addEventListener('click', (e) => { if (e.target === lb) _closeCameraLightbox(); });
+  if (img) img.addEventListener('click', _closeCameraLightbox);  // click image again to close
+  if (closeBtn) closeBtn.addEventListener('click', _closeCameraLightbox);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const lb = document.getElementById('cam-lightbox');
+    if (lb && lb.classList.contains('open')) _closeCameraLightbox();
+  }
+});
+
 // Called from initMap (after data layers) and from _performBasemapSwap
 // (after re-add) to re-apply all enabled overlays.
 function _applyAllOverlays() {
   _applyTrafficFlow();
   _applyPlacesPoi();
   _applyIncidents();
+  _applyCameras();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3876,15 +5102,20 @@ let _viewshedBounds    = null;  // { minLng, maxLng, minLat, maxLat }
 function toggleViewshed(on) {
   _viewshedActive = !!on;
   if (_viewshedActive && _floodActive) toggleFlood(false);
-  const badge     = document.getElementById('viewshed-tile-badge');
-  const toggleBtn = document.getElementById('viewshed-tile-toggle');
-  const controls  = document.getElementById('viewshed-controls');
-  if (badge) {
-    badge.className   = 'tile-badge ' + (_viewshedActive ? 'live' : 'closed');
-    badge.textContent = _viewshedActive ? 'ON' : 'OFF';
+  // The viewshed tile row drives its own data-on / aria-expanded; the
+  // shared analysis-badge (top of the Analysis Tools tile) reflects whichever
+  // tool is active. The hidden legacy badge/button IDs are retained as no-ops.
+  const row       = document.querySelector('.tile__row[data-layer-id="viewshed"]');
+  const sharedBadge = document.getElementById('analysis-badge');
+  if (row) {
+    row.setAttribute('aria-pressed', String(_viewshedActive));
+    row.setAttribute('data-on', _viewshedActive ? '1' : '0');
+    row.setAttribute('aria-expanded', _viewshedActive ? 'true' : 'false');
   }
-  if (toggleBtn) toggleBtn.textContent = _viewshedActive ? 'DISABLE' : 'ENABLE';
-  if (controls)  controls.style.display = _viewshedActive ? 'block' : 'none';
+  if (sharedBadge) {
+    sharedBadge.className   = 'tile-badge ' + (_viewshedActive || _floodActive ? 'live' : 'closed');
+    sharedBadge.textContent = _viewshedActive ? 'VIEWSHED' : (_floodActive ? 'FLOOD' : 'IDLE');
+  }
   if (map)       map.getCanvas().style.cursor = _viewshedActive ? 'crosshair' : '';
   if (!_viewshedActive) clearViewshed();
 }
@@ -4112,15 +5343,17 @@ let _floodDataUrl    = null;
 function toggleFlood(on) {
   _floodActive = !!on;
   if (_floodActive && _viewshedActive) toggleViewshed(false);
-  const badge     = document.getElementById('flood-tile-badge');
-  const toggleBtn = document.getElementById('flood-tile-toggle');
-  const controls  = document.getElementById('flood-controls');
-  if (badge) {
-    badge.className   = 'tile-badge ' + (_floodActive ? 'live' : 'closed');
-    badge.textContent = _floodActive ? 'ON' : 'OFF';
+  const row         = document.querySelector('.tile__row[data-layer-id="flood"]');
+  const sharedBadge = document.getElementById('analysis-badge');
+  if (row) {
+    row.setAttribute('aria-pressed', String(_floodActive));
+    row.setAttribute('data-on', _floodActive ? '1' : '0');
+    row.setAttribute('aria-expanded', _floodActive ? 'true' : 'false');
   }
-  if (toggleBtn) toggleBtn.textContent = _floodActive ? 'DISABLE' : 'ENABLE';
-  if (controls)  controls.style.display = _floodActive ? 'block' : 'none';
+  if (sharedBadge) {
+    sharedBadge.className   = 'tile-badge ' + (_floodActive || _viewshedActive ? 'live' : 'closed');
+    sharedBadge.textContent = _floodActive ? 'FLOOD' : (_viewshedActive ? 'VIEWSHED' : 'IDLE');
+  }
   if (map)       map.getCanvas().style.cursor = _floodActive ? 'crosshair' : '';
   if (!_floodActive) clearFlood();
 }
@@ -4573,8 +5806,29 @@ async function routeTo(destLat, destLng, destName) {
     if (panel) {
       document.getElementById('route-dest-name').textContent = _activeRouteDestName;
       document.getElementById('route-distance').textContent = _fmtKm(leg.distance ? leg.distance.value : 0);
-      document.getElementById('route-duration').textContent = _fmtMin(leg.duration ? leg.duration.value : null);
-      document.getElementById('route-traffic').textContent = _fmtMin(leg.duration_in_traffic ? leg.duration_in_traffic.value : (leg.duration ? leg.duration.value : null));
+      const freeFlowSecs = leg.duration ? leg.duration.value : null;
+      const trafficSecs  = leg.duration_in_traffic ? leg.duration_in_traffic.value : freeFlowSecs;
+      document.getElementById('route-duration').textContent = _fmtMin(freeFlowSecs);
+      const trafficEl = document.getElementById('route-traffic');
+      trafficEl.textContent = _fmtMin(trafficSecs);
+      // Colour-code traffic delta: amber if >1.2x, rose if >1.5x.
+      trafficEl.classList.remove('traffic-amber', 'traffic-rose');
+      if (freeFlowSecs && trafficSecs) {
+        const ratio = trafficSecs / freeFlowSecs;
+        if (ratio > 1.5) trafficEl.classList.add('traffic-rose');
+        else if (ratio > 1.2) trafficEl.classList.add('traffic-amber');
+      }
+      // Arrival time. ETA = now + traffic-adjusted seconds, formatted HH:MM.
+      let arrivalEl = document.getElementById('route-arrival');
+      if (!arrivalEl) {
+        arrivalEl = document.createElement('div');
+        arrivalEl.id = 'route-arrival';
+        document.getElementById('route-origin-label').after(arrivalEl);
+      }
+      if (trafficSecs) {
+        const dt = new Date(Date.now() + trafficSecs * 1000);
+        arrivalEl.textContent = `Arrive ~ ${dt.getHours().toString().padStart(2,'0')}:${dt.getMinutes().toString().padStart(2,'0')}`;
+      } else { arrivalEl.textContent = ''; }
       document.getElementById('route-origin-label').textContent = 'from ' + (origin.label || 'your location');
       panel.style.display = 'block';
     }
@@ -6330,19 +7584,10 @@ function refreshActiveWeatherOverlays() {
 }
 
 function _renderLayerBtn(btn, on) {
-  const dot = btn.querySelector('.wx-dot');
+  // Drives the canonical .tile__row visual. data-on flips the dot fill +
+  // glow via CSS; aria-pressed for assistive tech.
   btn.setAttribute('aria-pressed', String(on));
-  if (on) {
-    btn.style.color = 'var(--sky)';
-    btn.style.borderColor = 'rgba(56,189,248,0.5)';
-    btn.style.background = 'rgba(56,189,248,0.1)';
-    if (dot) { dot.style.background = 'var(--sky)'; dot.style.boxShadow = '0 0 6px rgba(56,189,248,0.8)'; }
-  } else {
-    btn.style.color = 'var(--dim)';
-    btn.style.borderColor = 'rgba(255,255,255,0.12)';
-    btn.style.background = 'rgba(255,255,255,0.04)';
-    if (dot) { dot.style.background = 'var(--dim2)'; dot.style.boxShadow = 'none'; }
-  }
+  btn.setAttribute('data-on', on ? '1' : '0');
 }
 
 async function _toggleLayer(layer, btn) {
@@ -7646,18 +8891,9 @@ async function runFuelSearch() {
   function _renderToggle() {
     if (!toggleBtn) return;
     toggleBtn.setAttribute('aria-pressed', String(_fuelMapOn));
-    if (_fuelMapOn) {
-      toggleBtn.style.color = 'var(--emerald)';
-      toggleBtn.style.borderColor = 'rgba(52,211,153,0.4)';
-      toggleBtn.style.background = 'rgba(52,211,153,0.1)';
-      if (toggleDot) { toggleDot.style.background = 'var(--emerald)'; toggleDot.style.boxShadow = '0 0 6px rgba(52,211,153,0.8)'; }
-    } else {
-      toggleBtn.style.color = 'var(--dim)';
-      toggleBtn.style.borderColor = 'rgba(255,255,255,0.12)';
-      toggleBtn.style.background = 'rgba(255,255,255,0.04)';
-      if (toggleDot) { toggleDot.style.background = 'var(--dim2)'; toggleDot.style.boxShadow = 'none'; }
-    }
-    if (toggleLbl) toggleLbl.textContent = 'MAP';
+    toggleBtn.setAttribute('data-on', _fuelMapOn ? '1' : '0');
+    const countEl = document.getElementById('fuel-map-count');
+    if (countEl) countEl.textContent = _fuelMapOn ? 'on' : 'off';
   }
   async function _toggleFuelMap() {
     if (_fuelMapOn) {
@@ -7670,7 +8906,8 @@ async function runFuelSearch() {
     _renderToggle();
     // Load if we haven't yet (or the product changed)
     if (!_fuelStations.length) {
-      toggleLbl && (toggleLbl.textContent = '…');
+      const countEl = document.getElementById('fuel-map-count');
+      if (countEl) countEl.textContent = '…';
       await loadFuelStations(_fuelCurrentProduct);
     } else {
       addFuelStationLayers();
@@ -7679,7 +8916,9 @@ async function runFuelSearch() {
     _setFuelLayerVisibility(true);
     _renderToggle();
   }
-  if (toggleBtn) toggleBtn.addEventListener('click', _toggleFuelMap);
+  // Click is delegated through _onTileRowClick (which routes to
+  // window._toggleFuelMapExt). Keep direct binding too for safety.
+  window._toggleFuelMapExt = _toggleFuelMap;
 })();
 
 function updateFlightLayer() {
