@@ -1,0 +1,52 @@
+# Render.com Blueprint for God's Eye.
+# Render reads this on first deploy and again whenever it changes — push to
+# the connected branch and Render rebuilds.
+#
+# Setup (one-time, in the Render dashboard):
+#   1. New + → Blueprint → connect this repo
+#   2. Render auto-detects this file → "Apply"
+#   3. In the Web Service's Environment tab, paste real values for the
+#      `sync: false` keys (MAPTILER_KEY, GOOGLE_MAPS_BROWSER_KEY, etc.).
+#      Anything left unset means the corresponding layer is just disabled.
+#   4. Once deployed, copy the live URL into:
+#      - GODS_EYE_ALLOWED_ORIGINS env var here
+#      - Google Cloud, MapTiler, TomTom origin restrictions
+#
+# Free tier: web service sleeps after 15 min idle (~30s cold start).
+# To make it always-on for public use, change `plan: free` → `plan: starter`
+# in the dashboard ($7/mo). No code changes needed.
+
+services:
+  - type: web
+    name: gods-eye
+    runtime: docker
+    plan: free
+    region: singapore       # Closest Render region to Australia
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /proxy/status
+    autoDeploy: true        # Re-deploy on push to the connected branch
+    envVars:
+      # Render auto-injects PORT; server.py reads it.
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      # Set this in the dashboard to the Render URL once you know it,
+      # e.g. https://gods-eye.onrender.com,http://localhost:8777
+      - key: GODS_EYE_ALLOWED_ORIGINS
+        sync: false
+      # Browser keys — paste real values in the Render dashboard.
+      - key: MAPTILER_KEY
+        sync: false
+      - key: GOOGLE_MAPS_BROWSER_KEY
+        sync: false
+      - key: TOMTOM_KEY
+        sync: false
+      # Server-side keys — never reach the browser.
+      - key: NSW_TRAFFIC_API_KEY
+        sync: false
+      - key: NSW_FUEL_API_KEY
+        sync: false
+      - key: NSW_FUEL_SECRET
+        sync: false
+      - key: NSW_FUEL_BASIC_AUTH
+        sync: false
