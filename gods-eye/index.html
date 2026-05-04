@@ -973,6 +973,187 @@ html, body {
 .sparkline path { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 .sparkline .area { stroke: none; opacity: 0.15; }
 
+/* ─── Card detail modal ────────────────────────────────────────
+   One element (#card-modal); content renderer per card writes into the
+   .card-modal-body. Open via openCardModal(cardId), close via Escape /
+   overlay click / × / openCardModal called with a different id. */
+.card-modal {
+  position: fixed; inset: 0; z-index: 9000;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 6vh 16px 4vh; overflow-y: auto;
+  background: rgba(4, 8, 16, 0.78);
+  backdrop-filter: blur(6px);
+  opacity: 1; transition: opacity 180ms cubic-bezier(.2,.7,.2,1);
+}
+.card-modal.hidden { display: none; }
+.card-modal.entering { opacity: 0; }
+.card-modal-inner {
+  width: min(720px, 100%);
+  background: linear-gradient(180deg, rgba(14,22,40,0.96), rgba(8,14,28,0.96));
+  border: 1px solid rgba(56,189,248,0.2);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02) inset;
+  overflow: hidden;
+  transform: translateY(8px) scale(0.985); opacity: 1;
+  transition: transform 220ms cubic-bezier(.2,.8,.2,1), opacity 180ms;
+}
+.card-modal.entering .card-modal-inner { transform: translateY(16px) scale(0.97); opacity: 0; }
+.card-modal-header {
+  position: relative;
+  padding: 18px 56px 16px 22px;
+  border-bottom: 1px solid rgba(148,163,184,0.1);
+  background: linear-gradient(180deg, rgba(56,189,248,0.06), transparent);
+}
+.card-modal-eyebrow {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent);
+  margin-bottom: 4px;
+}
+.card-modal-title {
+  font-family: var(--font-ui); font-size: 22px; font-weight: 600;
+  letter-spacing: -0.01em; color: var(--ink);
+  margin: 0; line-height: 1.2;
+}
+.card-modal-meta {
+  margin-top: 6px; display: flex; flex-wrap: wrap; gap: 14px;
+  font-family: var(--font-mono); font-size: 10px; color: var(--dim);
+}
+.card-modal-meta .meta-dot {
+  display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--emerald); margin-right: 5px; vertical-align: middle;
+}
+.card-modal-close {
+  position: absolute; top: 14px; right: 14px;
+  width: 30px; height: 30px;
+  background: rgba(148,163,184,0.08); border: 1px solid rgba(148,163,184,0.18);
+  color: var(--dim); border-radius: 50%;
+  font-size: 18px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.card-modal-close:hover { background: rgba(251,113,133,0.16); color: var(--rose); border-color: rgba(251,113,133,0.4); }
+.card-modal-body {
+  padding: 18px 22px 20px;
+  font-size: 13px; color: var(--ink);
+}
+.card-modal-section {
+  padding-top: 16px; margin-top: 16px;
+  border-top: 1px solid rgba(148,163,184,0.08);
+}
+.card-modal-section:first-child { padding-top: 0; margin-top: 0; border-top: none; }
+.card-modal-section-title {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim2);
+  margin-bottom: 10px;
+}
+.card-modal-bignum {
+  font-family: var(--font-mono); font-size: 36px; font-weight: 700;
+  color: var(--ink); letter-spacing: -0.02em; line-height: 1;
+}
+.card-modal-bignum.up { color: var(--emerald); }
+.card-modal-bignum.down { color: var(--rose); }
+.card-modal-subnum {
+  font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+  color: var(--dim); margin-top: 6px;
+}
+.card-modal-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px 18px; margin-top: 4px;
+}
+.card-modal-stat-label {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim2);
+  margin-bottom: 3px;
+}
+.card-modal-stat-value {
+  font-family: var(--font-mono); font-size: 16px; font-weight: 600;
+  color: var(--ink); line-height: 1.2;
+}
+.card-modal-stat-sub { font-size: 10px; color: var(--dim); margin-top: 2px; }
+.card-modal-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; }
+.card-modal-table th, .card-modal-table td {
+  text-align: left; padding: 7px 10px;
+  border-bottom: 1px solid rgba(148,163,184,0.06);
+}
+.card-modal-table th {
+  font-size: 9px; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--dim2);
+}
+.card-modal-table td.num { text-align: right; }
+.card-modal-table tr:last-child td { border-bottom: none; }
+.card-modal-spark { width: 100%; height: 90px; margin-top: 4px; }
+.card-modal-spark svg { width: 100%; height: 100%; }
+.card-modal-spark path.line { fill: none; stroke-width: 1.6; stroke-linecap: round; }
+.card-modal-spark path.area { stroke: none; opacity: 0.18; }
+.card-modal-spark .grid { stroke: rgba(148,163,184,0.08); stroke-width: 1; }
+.card-modal-spark .axis-label {
+  font-family: var(--font-mono); font-size: 9px; fill: var(--dim2);
+}
+.card-modal-bar-row {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+}
+.card-modal-bar-label {
+  flex: 0 0 64px; font-family: var(--font-mono); font-size: 10px;
+  color: var(--dim);
+}
+.card-modal-bar {
+  flex: 1; height: 8px; background: rgba(148,163,184,0.08);
+  border-radius: 4px; position: relative; overflow: hidden;
+}
+.card-modal-bar-fill {
+  position: absolute; left: 0; top: 0; height: 100%;
+  border-radius: 4px;
+  transition: width 320ms cubic-bezier(.2,.8,.2,1);
+}
+.card-modal-bar-val {
+  flex: 0 0 60px; text-align: right;
+  font-family: var(--font-mono); font-size: 11px; color: var(--ink);
+}
+.card-modal-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  padding-top: 14px; margin-top: 16px;
+  border-top: 1px solid rgba(148,163,184,0.08);
+}
+.card-modal-btn {
+  flex: 1 1 auto;
+  padding: 9px 14px;
+  background: rgba(56,189,248,0.1);
+  border: 1px solid rgba(56,189,248,0.28);
+  color: var(--accent);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  border-radius: 6px; cursor: pointer;
+  transition: background 120ms, border-color 120ms, transform 120ms;
+  text-align: center; text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.card-modal-btn:hover { background: rgba(56,189,248,0.2); border-color: var(--accent); transform: translateY(-1px); }
+.card-modal-btn.secondary {
+  background: rgba(148,163,184,0.06);
+  border-color: rgba(148,163,184,0.18);
+  color: var(--dim);
+}
+.card-modal-btn.secondary:hover { color: var(--ink); border-color: rgba(148,163,184,0.4); }
+.card-modal-loading { color: var(--dim); font-style: italic; padding: 14px 0; text-align: center; font-size: 12px; }
+
+/* "Expand to detail" button on tiles. Sits in the tile-header next to the
+   title; clicking opens the card-modal for that card. */
+.tile__expand {
+  margin-left: auto;
+  width: 22px; height: 22px;
+  background: transparent; border: 1px solid transparent;
+  color: var(--dim2); border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 13px; line-height: 1;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.tile__expand:hover {
+  background: rgba(56,189,248,0.12); color: var(--accent);
+  border-color: rgba(56,189,248,0.25);
+}
+.tile.expand-hint { cursor: pointer; }
+
 /* ═══════════════════════════════════════════════════════════════
    CANONICAL TILE TEMPLATE (Phase B1)
    Sub-rows + chips + footer. Used by group tiles (Hazards,
@@ -1281,12 +1462,17 @@ html, body {
 .tile.is-filtered-out { display: none !important; }
 
 /* ─── BOTTOM STATUS BAR ─────────────────────────────── */
+/* Sits above the card tray. The `bottom` value is driven by --tray-h, set by
+   setTrayState() so the bar follows the tray as it minimises / peeks /
+   expands. z-index above the tray (60) so it sits cleanly on top. */
 #bottombar {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
-  height: 32px; display: flex; align-items: center;
+  position: fixed; bottom: var(--tray-h, 0px); left: 0; right: 0; z-index: 65;
+  height: 28px; display: flex; align-items: center;
   padding: 0 20px; gap: 20px;
-  background: linear-gradient(0deg, rgba(4,8,16,0.92) 0%, rgba(4,8,16,0.6) 80%, transparent 100%);
+  background: linear-gradient(0deg, rgba(4,8,16,0.92) 0%, rgba(4,8,16,0.78) 60%, rgba(4,8,16,0.4) 100%);
+  border-bottom: 1px solid rgba(56,189,248,0.06);
   font-size: 10px; color: var(--dim);
+  transition: bottom 220ms cubic-bezier(.2,.7,.2,1);
 }
 .bottom-item { display: flex; align-items: center; gap: 6px; }
 .bottom-dot { width: 5px; height: 5px; border-radius: 50%; }
@@ -1890,6 +2076,21 @@ html, body {
     <div class="card-tray-empty">All cards are pinned to the map. Drag one back here, or click "All to tray" above.</div>
   </div><!-- /.card-tray-scroll -->
 </div><!-- /#card-tray -->
+
+<!-- CARD DETAIL MODAL — single global element, content swapped per card -->
+<div id="card-modal" class="card-modal hidden" role="dialog" aria-modal="true" aria-labelledby="card-modal-title">
+  <div class="card-modal-inner">
+    <div class="card-modal-header">
+      <div class="card-modal-eyebrow" id="card-modal-eyebrow">—</div>
+      <h2 class="card-modal-title" id="card-modal-title">—</h2>
+      <div class="card-modal-meta" id="card-modal-meta"></div>
+      <button class="card-modal-close" id="card-modal-close" aria-label="Close">×</button>
+    </div>
+    <div class="card-modal-body" id="card-modal-body">
+      <div class="card-modal-loading">Loading…</div>
+    </div>
+  </div>
+</div>
 
 <!-- WEATHER TOWN SEARCH MODAL -->
 <div id="wx-search-modal" class="flight-modal hidden">
@@ -3190,6 +3391,652 @@ function flyTo(lng, lat, name) {
       e.preventDefault(); input.focus(); input.select();
     }
   });
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// CARD DETAIL MODAL  (Phase 2)
+// ───────────────────────────────────────────────────────────────
+// Each market / data card has a tile (at-a-glance) + a modal (depth).
+// Renderers are registered in _cardModalRenderers and called when
+// openCardModal(cardId) fires. Renderers can return either an HTML
+// string (sync) or a Promise<string> (async — we show "Loading…"
+// while it resolves).
+// ═══════════════════════════════════════════════════════════════
+const _cardModalRenderers = {};
+
+// Latest fetched data, kept around so a modal can render without a
+// network round-trip. Each fetchXxx() updates the relevant slot.
+const _cardData = {
+  asx: null, forex: null, rba: null, abs: null,
+  energy: null, fuel: null, parliament: null,
+  weather: null, // ← {points, fetchedAt, source}
+};
+
+// Card metadata — title, eyebrow, source attribution shown in the
+// modal header. id matches data-card-id on the tile.
+const _cardMeta = {
+  asx:        { eyebrow: 'Markets',   title: 'ASX 200',         source: 'Yahoo Finance' },
+  aud:        { eyebrow: 'Markets',   title: 'AUD Cross-Rates', source: 'Yahoo Finance' },
+  rba:        { eyebrow: 'Markets',   title: 'RBA Cash Rate',   source: 'Reserve Bank of Australia' },
+  pop:        { eyebrow: 'Markets',   title: 'Population',      source: 'ABS' },
+  nem:        { eyebrow: 'Markets',   title: 'NEM Energy Mix',  source: 'AEMO' },
+  fuel:       { eyebrow: 'Data',      title: 'Fuel Prices',     source: 'NSW FuelCheck + FuelWatch WA' },
+  weather:    { eyebrow: 'Data',      title: 'Weather Stations', source: 'BoM + Open-Meteo' },
+  flights:    { eyebrow: 'Data',      title: 'Flight Movements', source: 'ADS-B Exchange' },
+  hazards:    { eyebrow: 'Data',      title: 'Hazards',         source: 'Multiple AU emergency feeds' },
+  traffic:    { eyebrow: 'Data',      title: 'Traffic & Roads', source: 'TfNSW + TomTom' },
+  places:     { eyebrow: 'Data',      title: 'Places',          source: 'Built-in + Google Places' },
+  analysis:   { eyebrow: 'Analysis',  title: 'Analysis Tools',  source: 'AWS Terrarium DEM' },
+};
+
+let _cardModalCurrent = null;
+
+function _esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
+}
+
+function _fmtAge(date) {
+  if (!date) return '';
+  const ms = Date.now() - (date instanceof Date ? date.getTime() : Number(date));
+  if (ms < 60*1000) return 'just now';
+  if (ms < 60*60*1000) return Math.round(ms/60000) + ' min ago';
+  if (ms < 24*60*60*1000) return Math.round(ms/3600000) + ' h ago';
+  return Math.round(ms/86400000) + ' d ago';
+}
+
+function openCardModal(cardId) {
+  const modal = document.getElementById('card-modal');
+  if (!modal) return;
+  const meta = _cardMeta[cardId] || { eyebrow: '', title: cardId, source: '' };
+  document.getElementById('card-modal-eyebrow').textContent = meta.eyebrow || '';
+  document.getElementById('card-modal-title').textContent = meta.title || cardId;
+  const metaEl = document.getElementById('card-modal-meta');
+  metaEl.innerHTML = meta.source
+    ? `<span><span class="meta-dot"></span>Source: ${_esc(meta.source)}</span>`
+    : '';
+  const body = document.getElementById('card-modal-body');
+  body.innerHTML = '<div class="card-modal-loading">Loading…</div>';
+  _cardModalCurrent = cardId;
+  modal.classList.remove('hidden');
+  modal.classList.add('entering');
+  // Trigger transition next tick.
+  requestAnimationFrame(() => modal.classList.remove('entering'));
+  document.body.style.overflow = 'hidden';
+
+  const renderer = _cardModalRenderers[cardId];
+  if (!renderer) {
+    body.innerHTML = '<div class="card-modal-loading">No detail view yet for this card.</div>';
+    return;
+  }
+  try {
+    const result = renderer();
+    if (result && typeof result.then === 'function') {
+      result.then(html => {
+        if (_cardModalCurrent === cardId) body.innerHTML = html || '';
+      }).catch(err => {
+        console.warn('card modal renderer error:', err);
+        if (_cardModalCurrent === cardId) {
+          body.innerHTML = `<div class="card-modal-loading">Couldn't load: ${_esc(err.message || err)}</div>`;
+        }
+      });
+    } else {
+      body.innerHTML = result || '';
+    }
+  } catch (err) {
+    console.warn('card modal renderer threw:', err);
+    body.innerHTML = `<div class="card-modal-loading">Couldn't load: ${_esc(err.message || err)}</div>`;
+  }
+}
+
+function closeCardModal() {
+  const modal = document.getElementById('card-modal');
+  if (!modal || modal.classList.contains('hidden')) return;
+  modal.classList.add('hidden');
+  _cardModalCurrent = null;
+  document.body.style.overflow = '';
+}
+
+// Wire close affordances. Overlay click + Escape + × button.
+(function wireCardModal() {
+  const modal = document.getElementById('card-modal');
+  if (!modal) return;
+  modal.addEventListener('click', (e) => {
+    // Only close when clicking the backdrop (the modal element itself), not
+    // the inner content.
+    if (e.target === modal) closeCardModal();
+  });
+  document.getElementById('card-modal-close').addEventListener('click', closeCardModal);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && _cardModalCurrent) closeCardModal();
+  });
+})();
+
+// Wire tile → open modal. Two affordances per tile:
+//   1. Explicit ".tile__expand" button (visible in the tile header).
+//   2. Click on the tile-header label (".tile-title") opens too.
+// Layer-toggle rows continue to work — the document-level row handler
+// runs first because tile__expand and .tile-title aren't .tile__row.
+(function wireTileExpand() {
+  // Inject an expand button only on tiles whose card-id has a renderer.
+  // Tiles without a renderer (flights / hazards / traffic / places /
+  // analysis) keep their existing toggle-row behaviour and don't get
+  // an empty modal.
+  document.querySelectorAll('.tile[data-card-id]').forEach(tile => {
+    const cardId = tile.getAttribute('data-card-id');
+    if (!_cardModalRenderers[cardId]) return;
+    const header = tile.querySelector('.tile-header');
+    if (!header || header.querySelector('.tile__expand')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tile__expand';
+    btn.setAttribute('aria-label', 'Open detail view');
+    btn.title = 'Detail view';
+    btn.innerHTML = '&#x2197;'; // ↗
+    header.appendChild(btn);
+  });
+  document.addEventListener('click', (e) => {
+    const expand = e.target.closest('.tile__expand');
+    if (expand) {
+      const tile = expand.closest('.tile[data-card-id]');
+      if (tile) {
+        e.stopPropagation();
+        openCardModal(tile.getAttribute('data-card-id'));
+      }
+      return;
+    }
+    // Click on a .tile-title also opens, but only for cards with renderers.
+    const title = e.target.closest('.tile-title');
+    if (title) {
+      const tile = title.closest('.tile[data-card-id]');
+      if (tile && _cardModalRenderers[tile.getAttribute('data-card-id')]) {
+        openCardModal(tile.getAttribute('data-card-id'));
+      }
+    }
+  });
+})();
+
+// ───────────────────────────────────────────────────────────────
+// PER-CARD RENDERERS
+// Each builds an innerHTML string from already-fetched data.
+// They re-fetch only when the slot is empty (first open) — we can
+// add an explicit refresh button later if needed.
+// ───────────────────────────────────────────────────────────────
+
+function _formatAsxStatus() {
+  // ASX is open Mon-Fri, 10:00-16:00 AEST/AEDT (Sydney).
+  try {
+    const sydneyNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Australia/Sydney' }));
+    const dow = sydneyNow.getDay(); // 0 Sun .. 6 Sat
+    const minutes = sydneyNow.getHours() * 60 + sydneyNow.getMinutes();
+    const isWeekday = dow >= 1 && dow <= 5;
+    const open = 10 * 60, close = 16 * 60;
+    if (isWeekday && minutes >= open && minutes < close) return { state: 'OPEN', detail: 'ASX trading hours · Sydney' };
+    if (isWeekday && minutes < open) return { state: 'PRE-MARKET', detail: 'Opens 10:00 Sydney' };
+    if (isWeekday && minutes >= close) return { state: 'CLOSED', detail: 'Closed at 16:00 Sydney' };
+    return { state: 'CLOSED', detail: 'Weekend · Reopens Monday 10:00 Sydney' };
+  } catch (_) { return { state: '—', detail: '' }; }
+}
+
+_cardModalRenderers.asx = async () => {
+  let d = _cardData.asx;
+  if (!d) {
+    try {
+      const r = await _fetch(`${API}/proxy/asx`);
+      if (r.ok) {
+        const j = await r.json();
+        if (j.data && j.data.price) d = _cardData.asx = j.data;
+      }
+    } catch (_) {}
+  }
+  if (!d) return `<div class="card-modal-loading">Live data not available.</div>`;
+  const change = Number(d.change || 0), pct = Number(d.changePercent || 0);
+  const dir = change >= 0 ? 'up' : 'down';
+  const sign = change >= 0 ? '+' : '';
+  const status = _formatAsxStatus();
+  const sparkSvg = _bigSparkSvg(d.sparkline || [], dir === 'up' ? '#34d399' : '#fb7185');
+  const dayLow  = d.dayLow != null ? Number(d.dayLow).toLocaleString('en-AU', { minimumFractionDigits: 2 }) : '—';
+  const dayHigh = d.dayHigh != null ? Number(d.dayHigh).toLocaleString('en-AU', { minimumFractionDigits: 2 }) : '—';
+  const open = d.open != null ? Number(d.open).toLocaleString('en-AU', { minimumFractionDigits: 2 }) : '—';
+  const prev = d.previousClose != null ? Number(d.previousClose).toLocaleString('en-AU', { minimumFractionDigits: 2 }) : '—';
+  return `
+    <div class="card-modal-section">
+      <div class="card-modal-bignum ${dir}">${Number(d.price).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      <div class="card-modal-subnum" style="color:var(--${dir === 'up' ? 'emerald' : 'rose'})">
+        ${sign}${change.toFixed(2)} (${sign}${pct.toFixed(2)}%) today
+      </div>
+      <div class="card-modal-spark" style="margin-top:14px">${sparkSvg}</div>
+    </div>
+    <div class="card-modal-section">
+      <div class="card-modal-section-title">Today</div>
+      <div class="card-modal-grid">
+        <div><div class="card-modal-stat-label">Open</div><div class="card-modal-stat-value">${open}</div></div>
+        <div><div class="card-modal-stat-label">Day low</div><div class="card-modal-stat-value">${dayLow}</div></div>
+        <div><div class="card-modal-stat-label">Day high</div><div class="card-modal-stat-value">${dayHigh}</div></div>
+        <div><div class="card-modal-stat-label">Prev close</div><div class="card-modal-stat-value">${prev}</div></div>
+      </div>
+    </div>
+    <div class="card-modal-section">
+      <div class="card-modal-section-title">Market status</div>
+      <div class="card-modal-stat-value" style="color:${status.state === 'OPEN' ? 'var(--emerald)' : 'var(--dim)'}">${status.state}</div>
+      <div class="card-modal-stat-sub">${_esc(status.detail)}</div>
+    </div>
+    <div class="card-modal-actions">
+      <a class="card-modal-btn" href="https://au.finance.yahoo.com/quote/%5EAXJO/" target="_blank" rel="noopener">Open in Yahoo Finance ↗</a>
+      <a class="card-modal-btn secondary" href="https://www.asx.com.au/markets/trade-our-cash-market" target="_blank" rel="noopener">ASX cash market ↗</a>
+    </div>
+  `;
+};
+
+_cardModalRenderers.aud = async () => {
+  let d = _cardData.forex;
+  if (!d) {
+    try {
+      const r = await _fetch(`${API}/proxy/forex`);
+      if (r.ok) {
+        const j = await r.json();
+        if (j.data) d = _cardData.forex = j.data;
+      }
+    } catch (_) {}
+  }
+  if (!d) return `<div class="card-modal-loading">Live data not available.</div>`;
+  const usd = d.USD || {};
+  const usdChange = Number(usd.change || 0), usdPct = Number(usd.changePercent || 0);
+  const dir = usdChange >= 0 ? 'up' : 'down';
+  const sign = usdChange >= 0 ? '+' : '';
+  // All known cross-rates the proxy may return.
+  const order = ['USD','EUR','GBP','JPY','NZD','CNY','SGD','HKD'];
+  const rows = order
+    .map(k => ({ k, v: d[k] }))
+    .filter(x => x.v && x.v.rate != null);
+  const tableRows = rows.map(({ k, v }) => {
+    const ch = Number(v.change || 0), pc = Number(v.changePercent || 0);
+    const cls = ch === 0 ? '' : (ch > 0 ? 'up' : 'down');
+    const s = ch >= 0 ? '+' : '';
+    const dec = k === 'JPY' ? 2 : 4;
+    const chDec = k === 'JPY' ? 2 : 4;
+    return `<tr>
+      <td><strong>AUD / ${_esc(k)}</strong></td>
+      <td class="num">${Number(v.rate).toFixed(dec)}</td>
+      <td class="num" style="color:var(--${cls === 'up' ? 'emerald' : cls === 'down' ? 'rose' : 'dim'})">${s}${ch.toFixed(chDec)}</td>
+      <td class="num" style="color:var(--${cls === 'up' ? 'emerald' : cls === 'down' ? 'rose' : 'dim'})">${s}${pc.toFixed(2)}%</td>
+    </tr>`;
+  }).join('');
+  // Currency strength: relative day-pct, normalised to a -1..+1 scale.
+  const maxAbs = Math.max(0.5, ...rows.map(r => Math.abs(Number(r.v.changePercent || 0))));
+  const strengthBars = rows.slice(0, 5).map(({ k, v }) => {
+    const pc = Number(v.changePercent || 0);
+    const widthPct = Math.min(100, (Math.abs(pc) / maxAbs) * 50);
+    const offset = pc >= 0 ? 50 : (50 - widthPct);
+    const color = pc >= 0 ? 'var(--emerald)' : 'var(--rose)';
+    return `<div class="card-modal-bar-row">
+      <div class="card-modal-bar-label">${_esc(k)}</div>
+      <div class="card-modal-bar">
+        <div class="card-modal-bar-fill" style="left:${offset}%;width:${widthPct}%;background:${color}"></div>
+        <div style="position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:rgba(148,163,184,0.3)"></div>
+      </div>
+      <div class="card-modal-bar-val" style="color:${pc >= 0 ? 'var(--emerald)' : 'var(--rose)'}">${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%</div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="card-modal-section">
+      <div class="card-modal-bignum ${dir}">${Number(usd.rate || 0).toFixed(4)}</div>
+      <div class="card-modal-subnum" style="color:var(--${dir === 'up' ? 'emerald' : 'rose'})">
+        AUD/USD &middot; ${sign}${usdChange.toFixed(4)} (${sign}${usdPct.toFixed(2)}%) today
+      </div>
+    </div>
+    <div class="card-modal-section">
+      <div class="card-modal-section-title">Cross-rates</div>
+      <table class="card-modal-table">
+        <thead><tr><th>Pair</th><th class="num">Rate</th><th class="num">Change</th><th class="num">% Day</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+    <div class="card-modal-section">
+      <div class="card-modal-section-title">AUD strength today</div>
+      ${strengthBars}
+    </div>
+    <div class="card-modal-actions">
+      <a class="card-modal-btn" href="https://au.finance.yahoo.com/currencies" target="_blank" rel="noopener">Yahoo Finance ↗</a>
+      <a class="card-modal-btn secondary" href="https://www.rba.gov.au/statistics/frequency/exchange-rates.html" target="_blank" rel="noopener">RBA exchange rates ↗</a>
+    </div>
+  `;
+};
+
+_cardModalRenderers.rba = async () => {
+  let d = _cardData.rba;
+  if (!d) {
+    try {
+      const r = await _fetch(`${API}/proxy/rba`);
+      if (r.ok) {
+        const j = await r.json();
+        if (j.data) d = _cardData.rba = j.data;
+      }
+    } catch (_) {}
+  }
+  let abs = _cardData.abs;
+  if (!abs) {
+    try {
+      const r = await _fetch(`${API}/proxy/abs`);
+      if (r.ok) {
+        const j = await r.json();
+        if (j.data) abs = _cardData.abs = j.data;
+      }
+    } catch (_) {}
+  }
+  const rate = d && d.cash_rate != null ? Number(d.cash_rate).toFixed(2) + '%' : '—';
+  const next = _nextRbaMeeting();
+  const cpi = abs && abs.cpi_yoy != null ? Number(abs.cpi_yoy).toFixed(1) + '%' : '—';
+  const unemp = abs && abs.unemployment_rate != null ? Number(abs.unemployment_rate).toFixed(1) + '%' : '—';
+  const gdp = abs && abs.gdp_growth != null ? (Number(abs.gdp_growth) >= 0 ? '+' : '') + Number(abs.gdp_growth).toFixed(1) + '%' : '—';
+  return `
+    <div class="card-modal-section">
+      <div class="card-modal-bignum">${rate}</div>
+      <div class="card-modal-subnum">Official cash rate target</div>
+    </div>
+    <div class="card-modal-section">
+      <div class="card-modal-section-title">Next RBA Board meeting</div>
+      <div class="card-modal-stat-value">${_esc(next.label)}</div>
+      <div class="card-modal-stat-sub">${_esc(next.detail)}</div>
+    </div>
+    <div class="card-modal-section">
+      <div class="card-modal-section-title">Macro context (ABS, latest)</div>
+      <div class="card-modal-grid">
+        <div><div class="card-modal-stat-label">CPI · YoY</div><div class="card-modal-stat-value">${cpi}</div></div>
+        <div><div class="card-modal-stat-label">Unemployment</div><div class="card-modal-stat-value">${unemp}</div></div>
+        <div><div class="card-modal-stat-label">GDP growth</div><div class="card-modal-stat-value">${gdp}</div></div>
+      </div>
+    </div>
+    <div class="card-modal-actions">
+      <a class="card-modal-btn" href="https://www.rba.gov.au/statistics/cash-rate/" target="_blank" rel="noopener">RBA cash rate ↗</a>
+      <a class="card-modal-btn secondary" href="https://www.rba.gov.au/monetary-policy/rba-board-minutes/" target="_blank" rel="noopener">Board minutes ↗</a>
+    </div>
+  `;
+};
+
+// RBA Board meets the first Tuesday of every month except January (per
+// 2024+ schedule). This is good enough for the next-meeting display;
+// if the schedule moves, the link below points to the official source.
+function _nextRbaMeeting() {
+  const now = new Date();
+  let y = now.getFullYear(), m = now.getMonth();
+  for (let i = 0; i < 13; i++) {
+    const tryY = y, tryM = (m + i) % 12;
+    if ((m + i) >= 12) y = now.getFullYear() + 1;
+    if (tryM === 0) continue; // No January meeting.
+    const first = new Date(tryY, tryM, 1);
+    const offset = (2 - first.getDay() + 7) % 7; // Tuesday = 2
+    const meeting = new Date(tryY, tryM, 1 + offset);
+    if (meeting > now) {
+      const opts = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+      const days = Math.round((meeting - now) / (24*3600*1000));
+      return {
+        label: meeting.toLocaleDateString('en-AU', opts),
+        detail: `In ${days} day${days === 1 ? '' : 's'} · 2:30 pm announcement (Sydney)`,
+      };
+    }
+  }
+  return { label: '—', detail: 'See RBA schedule' };
+}
+
+_cardModalRenderers.pop = async () => {
+  let abs = _cardData.abs;
+  if (!abs) {
+    try {
+      const r = await _fetch(`${API}/proxy/abs`);
+      if (r.ok) {
+        const j = await r.json();
+        if (j.data) abs = _cardData.abs = j.data;
+      }
+    } catch (_) {}
+  }
+  const pop = abs && abs.population != null ? Number(abs.population) : null;
+  const popStr = pop != null ? Math.round(pop).toLocaleString('en-AU') : '—';
+  // ABS state populations from the most recent ABS Population by Region
+  // release. Hard-coded as a fallback when the proxy doesn't expose them.
+  const states = (abs && abs.population_by_state) || [
+    { state: 'NSW', pop: 8540000 },
+    { state: 'VIC', pop: 7010000 },
+    { state: 'QLD', pop: 5630000 },
+    { state: 'WA',  pop: 2960000 },
+    { state: 'SA',  pop: 1880000 },
+    { state: 'TAS', pop:  580000 },
+    { state: 'ACT', pop:  490000 },
+    { state: 'NT',  pop:  260000 },
+  ];
+  const total = states.reduce((s, x) => s + x.pop, 0);
+  const bars = states.map(s => {
+    const pct = (s.pop / total) * 100;
+    return `<div class="card-modal-bar-row">
+      <div class="card-modal-bar-label">${_esc(s.state)}</div>
+      <div class="card-modal-bar">
+        <div class="card-modal-bar-fill" style="width:${pct}%;background:linear-gradient(90deg,#a78bfa,#c4b5fd)"></div>
+      </div>
+      <div class="card-modal-bar-val">${(s.pop/1e6).toFixed(2)} M</div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="card-modal-section">
+      <div class="card-modal-bignum" style="color:var(--purple)">${popStr}</div>
+      <div class="card-modal-subnum">Estimated resident population (ABS)</div>
+    </div>
+    <div class="card-modal-section">
+      <div class="card-modal-section-title">By state / territory</div>
+      ${bars}
+    </div>
+    <div class="card-modal-actions">
+      <a class="card-modal-btn" href="https://www.abs.gov.au/statistics/people/population/national-state-and-territory-population/latest-release" target="_blank" rel="noopener">ABS release ↗</a>
+      <a class="card-modal-btn secondary" href="https://www.abs.gov.au/population-clock" target="_blank" rel="noopener">Population clock ↗</a>
+    </div>
+  `;
+};
+
+_cardModalRenderers.nem = async () => {
+  let d = _cardData.energy;
+  if (!d) {
+    try {
+      const r = await _fetch(`${API}/proxy/energy`);
+      if (r.ok) {
+        const j = await r.json();
+        if (j.data) d = _cardData.energy = j.data;
+      }
+    } catch (_) {}
+  }
+  // AEMO can return per-region rows.
+  const regions = [];
+  if (Array.isArray(d)) {
+    d.forEach(r => regions.push({
+      region: r.REGIONID || r.regionid || '—',
+      demand: r.TOTALDEMAND || r.totaldemand || 0,
+      price:  r.RRP || r.rrp || null,
+    }));
+  } else if (d && (d.ELEC_NEM_SUMMARY || d.elec_nem_summary)) {
+    const rows = d.ELEC_NEM_SUMMARY || d.elec_nem_summary;
+    if (Array.isArray(rows)) rows.forEach(r => regions.push({
+      region: r.REGIONID || r.regionid || '—',
+      demand: r.TOTALDEMAND || r.totaldemand || 0,
+      price:  r.RRP || r.rrp || null,
+    }));
+  }
+  const total = regions.reduce((s, r) => s + (r.demand || 0), 0);
+  const maxDemand = Math.max(1, ...regions.map(r => r.demand || 0));
+  const tableRows = regions.map(r => {
+    const pct = (r.demand / maxDemand) * 100;
+    return `<tr>
+      <td><strong>${_esc(r.region)}</strong></td>
+      <td class="num">${(r.demand || 0).toLocaleString()} MW</td>
+      <td class="num">${r.price != null ? '$' + Number(r.price).toFixed(0) + ' /MWh' : '—'}</td>
+    </tr>`;
+  }).join('');
+  const totalGw = total ? (total/1000).toFixed(2) + ' GW' : '—';
+  return `
+    <div class="card-modal-section">
+      <div class="card-modal-bignum">${totalGw}</div>
+      <div class="card-modal-subnum">National demand (5-minute live)</div>
+    </div>
+    ${regions.length ? `
+    <div class="card-modal-section">
+      <div class="card-modal-section-title">By region</div>
+      <table class="card-modal-table">
+        <thead><tr><th>Region</th><th class="num">Demand</th><th class="num">Spot price</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>` : ''}
+    <div class="card-modal-actions">
+      <a class="card-modal-btn" href="https://aemo.com.au/energy-systems/electricity/national-electricity-market-nem/data-nem/data-dashboard-nem" target="_blank" rel="noopener">AEMO dashboard ↗</a>
+      <a class="card-modal-btn secondary" href="https://opennem.org.au/" target="_blank" rel="noopener">OpenNEM ↗</a>
+    </div>
+  `;
+};
+
+_cardModalRenderers.fuel = async () => {
+  let d = _cardData.fuel;
+  if (!d) {
+    try {
+      const r = await _fetch(`${API}/proxy/fuel`);
+      if (r.ok) {
+        const j = await r.json();
+        if (j.data) d = _cardData.fuel = j.data;
+      }
+    } catch (_) {}
+  }
+  if (!d) return `<div class="card-modal-loading">Live data not available.</div>`;
+  const prod = d.products || {};
+  const order = ['ULP','E10','PULP','P95','P98','DIESEL','LPG'];
+  const rows = order
+    .filter(k => prod[k])
+    .map(k => {
+      const r = prod[k];
+      return `<tr>
+        <td><strong>${_esc(k)}</strong></td>
+        <td class="num">${Number(r.median).toFixed(1)} c/L</td>
+        <td class="num">${Number(r.min || 0).toFixed(1)}</td>
+        <td class="num">${Number(r.max || 0).toFixed(1)}</td>
+        <td class="num">${Number(r.count || 0).toLocaleString()}</td>
+      </tr>`;
+    }).join('');
+  const cov = Array.isArray(d.coverage) && d.coverage.length ? d.coverage.join(' + ') : (d.state || 'AU');
+  const total = prod.ULP ? prod.ULP.count : (prod.DIESEL ? prod.DIESEL.count : 0);
+  return `
+    <div class="card-modal-section">
+      <div class="card-modal-bignum" style="color:var(--amber)">${prod.ULP ? Number(prod.ULP.median).toFixed(1) + ' c/L' : '—'}</div>
+      <div class="card-modal-subnum">Median ULP 91 across ${cov} (${total.toLocaleString()} stations)</div>
+    </div>
+    <div class="card-modal-section">
+      <div class="card-modal-section-title">All products</div>
+      <table class="card-modal-table">
+        <thead><tr><th>Product</th><th class="num">Median</th><th class="num">Min</th><th class="num">Max</th><th class="num">Stations</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5" style="color:var(--dim)">No products in feed.</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div class="card-modal-actions">
+      <button type="button" class="card-modal-btn" onclick="closeCardModal(); document.getElementById('fuel-search-btn')?.click();">Find cheapest near me</button>
+      <a class="card-modal-btn secondary" href="https://www.fuelcheck.nsw.gov.au/" target="_blank" rel="noopener">NSW FuelCheck ↗</a>
+      <a class="card-modal-btn secondary" href="https://www.fuelwatch.wa.gov.au/" target="_blank" rel="noopener">WA FuelWatch ↗</a>
+    </div>
+  `;
+};
+
+_cardModalRenderers.weather = async () => {
+  // Aggregate from already-loaded weather points. weatherData is keyed by
+  // station name in the BoM path; each value has temp/wind/humidity/etc.
+  const points = Object.values(typeof weatherData === 'object' && weatherData ? weatherData : {})
+    .filter(p => p && typeof p.temp === 'number' && typeof p.lat === 'number' && p.lat > -45);
+  if (!points.length) return `<div class="card-modal-loading">No weather data loaded yet.</div>`;
+  const sorted = [...points].sort((a, b) => b.temp - a.temp);
+  const hottest = sorted.slice(0, 5);
+  const coldest = sorted.slice(-5).reverse();
+  const renderRow = p => `<tr>
+    <td><strong>${_esc(p.name || '—')}</strong></td>
+    <td class="num" style="color:${p.temp >= 30 ? 'var(--rose)' : p.temp <= 5 ? 'var(--accent)' : 'var(--ink)'}">${p.temp.toFixed(1)}°C</td>
+    <td class="num">${p.humidity != null ? Math.round(p.humidity) + '%' : '—'}</td>
+    <td class="num">${p.wind != null ? Math.round(p.wind) + ' km/h' : '—'}</td>
+  </tr>`;
+  const avg = points.reduce((s, p) => s + p.temp, 0) / points.length;
+  return `
+    <div class="card-modal-section">
+      <div class="card-modal-grid">
+        <div><div class="card-modal-stat-label">Hottest</div><div class="card-modal-stat-value" style="color:var(--rose)">${sorted[0].temp.toFixed(1)}°C</div><div class="card-modal-stat-sub">${_esc(sorted[0].name)}</div></div>
+        <div><div class="card-modal-stat-label">Coldest</div><div class="card-modal-stat-value" style="color:var(--accent)">${sorted[sorted.length-1].temp.toFixed(1)}°C</div><div class="card-modal-stat-sub">${_esc(sorted[sorted.length-1].name)}</div></div>
+        <div><div class="card-modal-stat-label">Mean</div><div class="card-modal-stat-value">${avg.toFixed(1)}°C</div><div class="card-modal-stat-sub">${points.length} stations</div></div>
+      </div>
+    </div>
+    <div class="card-modal-section">
+      <div class="card-modal-section-title">Top 5 hottest right now</div>
+      <table class="card-modal-table">
+        <thead><tr><th>Station</th><th class="num">Temp</th><th class="num">Humidity</th><th class="num">Wind</th></tr></thead>
+        <tbody>${hottest.map(renderRow).join('')}</tbody>
+      </table>
+    </div>
+    <div class="card-modal-section">
+      <div class="card-modal-section-title">Top 5 coldest right now</div>
+      <table class="card-modal-table">
+        <thead><tr><th>Station</th><th class="num">Temp</th><th class="num">Humidity</th><th class="num">Wind</th></tr></thead>
+        <tbody>${coldest.map(renderRow).join('')}</tbody>
+      </table>
+    </div>
+    <div class="card-modal-actions">
+      <button type="button" class="card-modal-btn" onclick="closeCardModal(); document.getElementById('wx-search-btn')?.click();">Search a town</button>
+      <a class="card-modal-btn secondary" href="http://www.bom.gov.au/" target="_blank" rel="noopener">BoM ↗</a>
+    </div>
+  `;
+};
+
+// Build a polished sparkline SVG with axis-aligned line + area + grid.
+function _bigSparkSvg(points, color) {
+  if (!points || points.length < 2) {
+    return `<svg viewBox="0 0 600 90" preserveAspectRatio="none"><text x="50%" y="50%" text-anchor="middle" class="axis-label">No history</text></svg>`;
+  }
+  const w = 600, h = 90, pad = 6;
+  const min = Math.min(...points), max = Math.max(...points);
+  const range = max - min || 1;
+  const dx = (w - pad * 2) / (points.length - 1);
+  const coords = points.map((v, i) => {
+    const x = pad + i * dx;
+    const y = pad + (1 - (v - min) / range) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const line = `M${coords.join(' L')}`;
+  const area = `${line} L${(w - pad).toFixed(1)},${(h - pad).toFixed(1)} L${pad},${(h - pad).toFixed(1)} Z`;
+  return `
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <line class="grid" x1="${pad}" y1="${h/2}" x2="${w - pad}" y2="${h/2}"/>
+      <path class="area" d="${area}" fill="${color}"/>
+      <path class="line" d="${line}" stroke="${color}"/>
+    </svg>
+  `;
+}
+
+// Update _cardData on every existing fetch so modals can render instantly.
+(function hookFetchersForCards() {
+  const orig = {
+    fetchASX: typeof fetchASX === 'function' ? fetchASX : null,
+    fetchForex: typeof fetchForex === 'function' ? fetchForex : null,
+    fetchRBA: typeof fetchRBA === 'function' ? fetchRBA : null,
+    fetchABS: typeof fetchABS === 'function' ? fetchABS : null,
+    fetchEnergy: typeof fetchEnergy === 'function' ? fetchEnergy : null,
+    fetchFuel: typeof fetchFuel === 'function' ? fetchFuel : null,
+    fetchParliament: typeof fetchParliament === 'function' ? fetchParliament : null,
+  };
+  // Each wrapper does the original fetch then re-fetches via /proxy/<x> to
+  // capture the raw payload. Cheap because of the 5-30 min server caches.
+  async function refreshCardSlot(slot, path) {
+    try {
+      const r = await _fetch(`${API}${path}`);
+      if (r.ok) {
+        const j = await r.json();
+        if (j.data) _cardData[slot] = j.data;
+      }
+    } catch (_) {}
+  }
+  if (orig.fetchASX)        { window.fetchASX        = async () => { await orig.fetchASX();        refreshCardSlot('asx',        '/proxy/asx'); }; }
+  if (orig.fetchForex)      { window.fetchForex      = async () => { await orig.fetchForex();      refreshCardSlot('forex',      '/proxy/forex'); }; }
+  if (orig.fetchRBA)        { window.fetchRBA        = async () => { await orig.fetchRBA();        refreshCardSlot('rba',        '/proxy/rba'); }; }
+  if (orig.fetchABS)        { window.fetchABS        = async () => { await orig.fetchABS();        refreshCardSlot('abs',        '/proxy/abs'); }; }
+  if (orig.fetchEnergy)     { window.fetchEnergy     = async () => { await orig.fetchEnergy();     refreshCardSlot('energy',     '/proxy/energy'); }; }
+  if (orig.fetchFuel)       { window.fetchFuel       = async () => { await orig.fetchFuel();       refreshCardSlot('fuel',       '/proxy/fuel'); }; }
+  if (orig.fetchParliament) { window.fetchParliament = async () => { await orig.fetchParliament(); refreshCardSlot('parliament', '/proxy/parliament'); }; }
 })();
 
 // ─── UPDATE LAYER COUNTS ─────────────────────────────────────
@@ -5893,6 +6740,12 @@ document.addEventListener('DOMContentLoaded', () => {
       try { localStorage.setItem(STATE_KEY, state); } catch(_) {}
       // Chevron points down when the drawer can grow, up when at max.
       if (chevron) chevron.textContent = state === 'expanded' ? '▾' : '▴';
+      // Drive --tray-h so #bottombar (and any other tray-aware UI) can sit
+      // above the tray rather than be covered by it.
+      const trayH = state === 'minimized' ? '34px'
+                  : state === 'expanded'  ? '62vh'
+                                          : '230px';
+      document.documentElement.style.setProperty('--tray-h', trayH);
     };
     const initialState = localStorage.getItem(STATE_KEY) || 'peek';
     setTrayState(initialState);
@@ -6062,6 +6915,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const delta = resize.startY - ev.clientY;
       const newH = Math.min(window.innerHeight - 80, Math.max(34, resize.startH + delta));
       tray.style.height = newH + 'px';
+      // Track the bottombar to the live drag height, not the snap-to state.
+      document.documentElement.style.setProperty('--tray-h', newH + 'px');
     });
     document.addEventListener('pointerup', (ev) => {
       if (!resize) return;
@@ -7604,9 +8459,11 @@ async function _toggleLayer(layer, btn) {
 }
 
 (function wireWeatherTile() {
-  document.querySelectorAll('.wx-layer-btn').forEach(btn => {
-    btn.addEventListener('click', () => _toggleLayer(btn.getAttribute('data-layer'), btn));
-  });
+  // Note: row clicks for radar/heatmap/wind are handled by the document-level
+  // _onTileRowClick (see ~line 3349). Attaching another listener here would
+  // fire _toggleLayer twice and the state would snap back to off — that bug
+  // shipped briefly. Town search wiring stays.
+
   // Town search
   const searchBtn = document.getElementById('wx-search-btn');
   const modal = document.getElementById('wx-search-modal');
