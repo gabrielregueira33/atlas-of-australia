@@ -2999,7 +2999,7 @@ _RV_TILE_HEADERS = {
     "Access-Control-Allow-Origin": "*",
 }
 
-_RV_PATH_RE = re.compile(r"^[a-zA-Z0-9]+(/[a-zA-Z0-9]+)*\.png$")
+_RV_PATH_RE = re.compile(r"^[a-zA-Z0-9_]+(/[a-zA-Z0-9_]+)*\.png$")
 
 
 @app.get("/proxy/rainviewer/{path:path}")

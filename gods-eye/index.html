@@ -532,10 +532,25 @@ html, body {
 .tile {
   padding: 14px 16px; cursor: default;
   position: relative;
-  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease,
+              transform 0.2s cubic-bezier(.2,.8,.2,1);
   width: 220px; flex: 0 0 auto;
 }
-.tile:hover { box-shadow: var(--shadow-lg); }
+.tile:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+/* Thin accent rule reveals on hover — shows the tile is interactive without
+   a heavy hover treatment. */
+.tile::after {
+  content: ''; position: absolute; left: 14px; right: 14px; bottom: 0;
+  height: 1px; background: var(--accent);
+  transform: scaleX(0); transform-origin: left center;
+  transition: transform 240ms cubic-bezier(.2,.8,.2,1);
+  pointer-events: none; opacity: 0.55;
+}
+.tile:hover::after { transform: scaleX(1); }
+/* Active state: when the card-modal is open for this tile, keep the accent
+   rule on and tint the border slightly. */
+.tile[data-modal-open="1"]::after { transform: scaleX(1); opacity: 1; }
+.tile[data-modal-open="1"] { border-color: var(--accent-dim); }
 .tile[data-pinned="1"] {
   position: fixed; z-index: 55;
   margin: 0;
@@ -715,7 +730,36 @@ html, body {
   font-size: 8px; padding: 2px 6px; border-radius: 4px;
   font-weight: 600; letter-spacing: 0.5px;
 }
-.tile-badge.live { background: var(--emerald-dim); color: var(--emerald); }
+.tile-badge.live { background: var(--emerald-dim); color: var(--emerald); position: relative; }
+/* Live badge breathing pulse — soft, never distracting. */
+.tile-badge.live::before {
+  content: ''; position: absolute; inset: -1px;
+  border-radius: inherit; pointer-events: none;
+  border: 1px solid var(--emerald);
+  opacity: 0; animation: live-breath 2.6s ease-in-out infinite;
+}
+@keyframes live-breath {
+  0%, 100% { opacity: 0; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(1.06); }
+}
+
+/* Skeleton placeholder — replaces "—" while a value is loading.
+   Apply via class="tile-skel" on the value element. */
+.tile-skel {
+  display: inline-block;
+  min-width: 64px; height: 1em;
+  vertical-align: middle;
+  background: linear-gradient(90deg,
+    rgba(148,163,184,0.05) 0%,
+    rgba(148,163,184,0.18) 50%,
+    rgba(148,163,184,0.05) 100%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: popup-skel-shimmer 1.4s ease-in-out infinite;
+  color: transparent !important;
+}
+.tile-skel.tile-skel-wide { min-width: 96px; }
+.tile-skel.tile-skel-short { min-width: 40px; }
 .tile-badge.closed { background: rgba(100,116,139,0.2); color: var(--dim); }
 .tile-badge.warn { background: var(--amber-dim); color: var(--amber); }
 
@@ -1475,7 +1519,11 @@ html, body {
   transition: bottom 220ms cubic-bezier(.2,.7,.2,1);
 }
 .bottom-item { display: flex; align-items: center; gap: 6px; }
-.bottom-dot { width: 5px; height: 5px; border-radius: 50%; }
+.bottom-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+  animation: pulse-dot 2.4s ease-in-out infinite;
+}
 .bottom-sep { width: 1px; height: 14px; background: rgba(255,255,255,0.06); }
 #coords { font-family: var(--font-mono); font-feature-settings: 'tnum'; letter-spacing: 0.5px; }
 #zoom-level { font-family: var(--font-mono); font-feature-settings: 'tnum'; }
@@ -3393,6 +3441,50 @@ function flyTo(lng, lat, name) {
   });
 })();
 
+// ───────────────────────────────────────────────────────────────
+// SKELETON PLACEHOLDERS  (Phase 3)
+// Mark async-loaded value elements with .tile-skel on boot so they
+// shimmer until first data arrival. Each fetcher already writes
+// .textContent on its target element, which removes the skel
+// children — we strip the class with a tiny MutationObserver below.
+// ───────────────────────────────────────────────────────────────
+(function initTileSkeletons() {
+  const skelTargets = [
+    'asx-val', 'asx-change',
+    'aud-val', 'aud-change', 'aud-eur', 'aud-gbp', 'aud-jpy',
+    'rba-rate', 'rba-subtitle',
+    'pop-val',
+    'nem-demand',
+    'fuel-ulp', 'fuel-diesel', 'fuel-e10',
+    'flight-count', 'flight-avg-alt', 'flight-avg-spd',
+  ];
+  skelTargets.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    // Only skeletonise if the current text is the "loading" placeholder.
+    const t = (el.textContent || '').trim();
+    if (t === '—' || t === '' || t === 'Loading...') {
+      el.classList.add('tile-skel');
+    }
+  });
+  // Strip the class as soon as real data is written. A MutationObserver
+  // covers innerHTML / className mutations; explicit textContent assignments
+  // also trigger a characterData mutation.
+  const obs = new MutationObserver(muts => {
+    muts.forEach(m => {
+      const el = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+      if (el && el.classList && el.classList.contains('tile-skel')) {
+        const t = (el.textContent || '').trim();
+        if (t && t !== '—' && t !== 'Loading...') el.classList.remove('tile-skel');
+      }
+    });
+  });
+  skelTargets.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) obs.observe(el, { childList: true, characterData: true, subtree: true });
+  });
+})();
+
 // ═══════════════════════════════════════════════════════════════
 // CARD DETAIL MODAL  (Phase 2)
 // ───────────────────────────────────────────────────────────────
@@ -3449,6 +3541,9 @@ function _fmtAge(date) {
 function openCardModal(cardId) {
   const modal = document.getElementById('card-modal');
   if (!modal) return;
+  // Mark every matching tile as "modal-open" so its hover style stays on.
+  document.querySelectorAll('.tile[data-card-id]').forEach(t => t.removeAttribute('data-modal-open'));
+  document.querySelectorAll(`.tile[data-card-id="${cardId}"]`).forEach(t => t.setAttribute('data-modal-open', '1'));
   const meta = _cardMeta[cardId] || { eyebrow: '', title: cardId, source: '' };
   document.getElementById('card-modal-eyebrow').textContent = meta.eyebrow || '';
   document.getElementById('card-modal-title').textContent = meta.title || cardId;
@@ -3496,6 +3591,7 @@ function closeCardModal() {
   modal.classList.add('hidden');
   _cardModalCurrent = null;
   document.body.style.overflow = '';
+  document.querySelectorAll('.tile[data-modal-open="1"]').forEach(t => t.removeAttribute('data-modal-open'));
 }
 
 // Wire close affordances. Overlay click + Escape + × button.
